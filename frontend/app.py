@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»
-Live AI Multi-Model Router: DeepSeek -> Qwen3.6 -> Backup Gateway
+Live AI Multi-Model Router: Полные развернутые ответы без обрывов + Executive Persona
 """
 
 import streamlit as st
@@ -23,12 +23,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Ключи и шлюзы из официальной инструкции хакатона
+# Официальные шлюзы хакатона
 LLM_API_KEY = st.secrets.get("LLM_API_KEY") if hasattr(st, "secrets") and "LLM_API_KEY" in st.secrets else os.getenv("LLM_API_KEY", "sk-ARm7HMnjyUUX-_sG3Qsicw")
 PRIMARY_URL = "https://changellenge.up.railway.app/v1"
 BACKUP_URL = "https://api.alfahack-gateway26.ru/v1"
 
-# Список моделей для роутинга (Слайд 18)
 MODELS_QUEUE = [
     "deepseek/deepseek-v4.1-flash",
     "qwen/qwen3.6-35b-a3b",
@@ -60,9 +59,12 @@ st.markdown("""
 
     header, #MainMenu, footer { visibility: hidden; height: 0; }
 
+    /* Убираем служебные плашки Streamlit */
     [data-testid="stSidebarCollapseButton"],
     button[data-testid="stSidebarCollapseButton"],
-    [data-testid="stSidebarHeader"] {
+    [data-testid="stSidebarHeader"],
+    div[data-testid="stStatusWidget"],
+    .viewerBadge_container__1QSob {
         display: none !important;
         visibility: hidden !important;
         height: 0 !important;
@@ -409,62 +411,59 @@ INSIGHTS = {
     }]
 }
 
-# КАСКАДНЫЙ ВЫЗОВ МОДЕЛЕЙ: DEEPSEEK -> QWEN -> GLM С ЧЕСТНЫМ СТАТУСОМ
+# ВЫЗОВ МОДЕЛИ: 1200 ТОКЕНОВ (БЕЗ ОБРЫВА СЛОВ) + EXECUTIVE ПОВЕДЕНИЕ
 def call_live_llm(prompt: str, context: str) -> str:
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json"
     }
     system_msg = (
-        "Ты — ведущий финансовый аналитик Центра макроэкономических исследований Альфа-Банка. "
-        "Твоя задача — давать четкие, емкие ответы руководителям крупного бизнеса (CEO, CFO). "
-        "Опирайся на точные финансовые цифры предприятия и логику ключевой ставки 14%. "
-        "Всегда структурируй ответ с абзацами и буллетами."
+        "Ты — старший финансово-экономический аналитик Центра макроэкономических исследований Альфа-Банка. "
+        "Твоя аудитория — топ-менеджмент крупного бизнеса (CEO, CFO, Руководитель казначейства). "
+        "Правила ответа:\n"
+        "1. ВСЕГДА заканчивай свою мысль и предложения полностью. Никаких обрывов текста.\n"
+        "2. Если пользователь просто здоровается или обращается неформально (например: 'привет', 'как дела', 'дружок'): "
+        "с достоинством поприветствуй его и сразу же переведи разговор в деловое русло, кратко обозначив 2 главных финансовых риска текущей компании по ставке 14% и спросив, какой показатель рассчитать детально.\n"
+        "3. Если задан конкретный вопрос — дай глубокий расчет с цифрами компании, влиянием на прибыль и решением от Альфа-Банка."
     )
-
-    # Перебираем модели по очереди, если первая перегружена
-    for model_name in MODELS_QUEUE:
-        payload = {
-            "model": model_name,
-            "messages": [
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": f"Финансовый контекст:\n{context}\n\nВопрос клиента:\n{prompt}"}
-            ],
-            "temperature": 0.2,
-            "max_tokens": 500
-        }
-
-        for base_url in [PRIMARY_URL, BACKUP_URL]:
-            try:
-                r = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload, timeout=12.0)
-                if r.status_code == 200:
-                    data = r.json()
-                    content = data["choices"][0]["message"]["content"]
-                    if content and len(content.strip()) > 0:
-                        return content
-                elif r.status_code == 429 or "Budget" in r.text:
-                    continue  # Пробуем следующую модель или шлюз
-            except Exception:
-                continue
-
+    payload = {
+        "model": LLM_MODEL,
+        "messages": [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": f"Контекст предприятия:\n{context}\n\nВопрос руководителя:\n{prompt}"}
+        ],
+        "temperature": 0.3,
+        "max_tokens": 1200
+    }
+    
+    for url in [f"{PRIMARY_URL}/chat/completions", f"{BACKUP_URL}/chat/completions"]:
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=18.0)
+            if r.status_code == 200:
+                res_data = r.json()
+                content = res_data["choices"][0]["message"]["content"]
+                if content and len(content.strip()) > 0:
+                    return content
+        except Exception:
+            continue
     return None
 
 def ask_ai_chat(company: dict, role: str, insight: dict, question: str) -> str:
     ctx = (
         f"Компания: {company.get('display_name')}\n"
         f"ОКВЭД: {company.get('main_okved_code')}\n"
-        f"Выручка: {company.get('revenue')} руб., Долг: {company.get('debt_preview')}\n"
-        f"Роль ЛПР: {role}\n"
+        f"Выручка: {company.get('revenue')} руб., Кредитный долг: {company.get('debt_preview')}\n"
+        f"Роль руководителя: {role}\n"
         f"Событие: {insight.get('title')}\n"
-        f"Позиция Банка: {insight.get('alfa_quote')}"
+        f"Позиция Альфа-Банка: {insight.get('alfa_quote')}"
     )
 
-    # 1. Живой ответ через официальный шлюз хакатона
+    # Живой ответ DeepSeek / Qwen
     live_result = call_live_llm(question, ctx)
     if live_result:
         return live_result
 
-    # 2. Экспертный расчет (с правильными переносами строк, чтобы ничего не слипалось)
+    # Запасной автономный расчет
     q_low = question.lower()
     if any(w in q_low for w in ["долг", "нагрузк", "ставк", "процент", "кредит"]):
         return (
@@ -475,18 +474,10 @@ def ask_ai_chat(company: dict, role: str, insight: dict, question: str) -> str:
             "• **Рекомендация:** Зафиксировать ставку по траншу 5.0 млрд руб. на уровне 12.6% через IRS Альфа-Банка."
         )
 
-    if any(w in q_low for w in ["поставщ", "покупател", "контрагент", "цепочк"]):
-        return (
-            "**Анализ устойчивости цепочки контрагентов:**\n\n"
-            "• **Покупатели:** Строительный сектор (контрагент U_3012) пролонгирует отсрочку платежей на **30 дней** из-за паузы в удешевлении кредитов.\n\n"
-            "• **Транспорт:** Ж/д операторы индексируют тарифы на **9–12%**, что увеличит расходы на 14.2 млн руб./мес.\n\n"
-            "• **Решение:** Подключить факторинг от Альфа-Банка для финансирования дебиторской задолженности."
-        )
-
     return (
-        "**Аналитический комментарий службы Альфа-Инсайт:**\n\n"
-        "С учетом масштаба предприятия (выручка >68 млрд руб.) данное регуляторное событие требует координации финансового и операционного блоков. "
-        "Рекомендуется смоделировать влияние ставки 14.0% на заседании бюджетного комитета компании."
+        "**Аналитическая служба Альфа-Инсайт:**\n\n"
+        "Приветствую! Для вашего предприятия ключевой задачей на 4 квартал является защита рентабельности от жесткой политики ЦБ. "
+        "Готов рассчитать влияние ставки 14% на долговую нагрузку или смоделировать риски по цепочке контрагентов. Какой расчет сформировать?"
     )
 
 if "chat_history" not in st.session_state:
@@ -526,7 +517,7 @@ with st.sidebar:
 
     st.markdown("<div style='height:40px;'></div>", unsafe_allow_html=True)
     st.caption("БЕЗОПАСНЫЙ КОНТУР")
-    st.markdown(f"<div style='font-size:0.75rem;color:#9CA3AF;'>Шлюз: <b>Multi-Model Live (DeepSeek/Qwen)</b><br>Статус: Активен</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='font-size:0.75rem;color:#9CA3AF;'>Модель: <b>{LLM_MODEL.split('/')[-1]}</b><br>Шлюз: <b>Live 1200 Tokens</b></div>", unsafe_allow_html=True)
 
 # ОСНОВНОЙ ЭКРАН
 if active_section == "Счета и выписки":
