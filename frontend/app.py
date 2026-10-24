@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Альфа-Инсайт: Интернет-банк «Альфа-Бизнес»
-Сквозная интеграция с Multi-Agent FastAPI Backend (Роли 1 и 2)
+Дизайн-система: Настоящее банковское меню в шторке + Светлый финтех-стиль
 """
 
 import streamlit as st
@@ -10,14 +10,14 @@ import base64
 from pathlib import Path
 from typing import Dict, List, Any
 
+# Открываем шторку по умолчанию (expanded)
 st.set_page_config(
     page_title="Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»",
     page_icon="https://alfabank.servicecdn.ru/icons/corp/favicons/favicon.ico",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
-# Адреса бэкенда напарников
 API_URLS = [
     "http://backend:8000/api",
     "http://localhost:8000/api",
@@ -38,7 +38,9 @@ def get_logo_html() -> str:
     paths = [
         Path("logos/alfa-bank-business.svg"),
         Path("frontend/logos/alfa-bank-business.svg"),
+        Path("assets/alfa-bank-business.svg"),
         Path("alfa-bank-business.svg"),
+        Path("logos/alfa-bank.svg"),
         Path("alfa-bank.svg")
     ]
     for p in paths:
@@ -51,27 +53,65 @@ def get_logo_html() -> str:
                 pass
     return '<span style="background:#EF3124;color:#FFFFFF;padding:4px 10px;border-radius:6px;font-weight:900;font-size:0.9rem;margin-right:10px;">А</span>'
 
+# Фирменный стиль Альфа-Бизнес + шторка
 st.markdown("""
 <style>
+    /* Светлый фон основного экрана */
     [data-testid="stAppViewContainer"], .stApp {
         background-color: #F8F9FA !important;
         color: #111827 !important;
     }
     header, #MainMenu, footer { visibility: hidden; height: 0; }
+    
     div.block-container {
         padding-top: 1.2rem !important;
         padding-bottom: 4rem !important;
         max-width: 1140px !important;
     }
+
+    /* ШТОРКА (БОКОВОЕ МЕНЮ БАНКА) */
+    [data-testid="stSidebar"] {
+        background-color: #FFFFFF !important;
+        border-right: 1px solid #E5E7EB !important;
+    }
+    [data-testid="stSidebar"] .block-container {
+        padding-top: 1.5rem !important;
+        padding-left: 1.2rem !important;
+        padding-right: 1.2rem !important;
+    }
+
+    /* Пункты меню в шторке */
+    .menu-item {
+        padding: 10px 14px;
+        border-radius: 10px;
+        font-size: 0.88rem;
+        font-weight: 500;
+        color: #4B5563;
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .menu-item.active {
+        background-color: #FFF5F5;
+        color: #EF3124;
+        font-weight: 700;
+        border-left: 3px solid #EF3124;
+        border-radius: 0 10px 10px 0;
+    }
+
+    /* Метрики */
     [data-testid="stMetricValue"] {
         color: #111827 !important;
-        font-size: 1.5rem !important;
+        font-size: 1.45rem !important;
         font-weight: 700 !important;
     }
     [data-testid="stMetricLabel"] {
         color: #4B5563 !important;
         font-weight: 600 !important;
     }
+
+    /* Верхняя панель основного контента */
     .alfa-top-nav {
         background: #111827;
         color: #FFFFFF;
@@ -95,13 +135,8 @@ st.markdown("""
         padding: 4px 12px;
         border-radius: 980px;
     }
-    .alfa-panel {
-        background: #FFFFFF;
-        border: 1px solid #E5E7EB;
-        border-radius: 16px;
-        padding: 16px 22px;
-        margin-bottom: 20px;
-    }
+
+    /* Точка входа */
     .alfa-entry {
         background: #FFFFFF;
         border: 1px solid #E5E7EB;
@@ -120,6 +155,8 @@ st.markdown("""
         font-size: 0.74rem;
         text-transform: uppercase;
     }
+
+    /* Карточки инсайта */
     .alfa-card {
         background: #FFFFFF;
         border: 1px solid #E5E7EB;
@@ -134,6 +171,8 @@ st.markdown("""
         line-height: 1.35;
         margin: 10px 0 18px 0;
     }
+
+    /* Подложки */
     .alfa-box-gray {
         background: #F9FAFB;
         border: 1px solid #E5E7EB;
@@ -361,31 +400,18 @@ if "chat_history" not in st.session_state:
 if "applied_products" not in st.session_state:
     st.session_state.applied_products = set()
 
-# НАВБАР
-nav_html = (
-    '<div class="alfa-top-nav">'
-    '<div style="display:flex;align-items:center;">'
-    f'{get_logo_html()}'
-    '<span class="alfa-nav-text">БИЗНЕС ОНЛАЙН</span>'
-    '</div>'
-    '<div class="alfa-nav-tag">Контур персонализированной аналитики • alfa-hack-2026</div>'
-    '</div>'
-)
-st.markdown(nav_html, unsafe_allow_html=True)
-
-# ПАНЕЛЬ УПРАВЛЕНИЯ
-st.markdown('<div class="alfa-panel">', unsafe_allow_html=True)
-c_col, r_col, m_col = st.columns([2.5, 2, 1.4])
-
-companies = fetch_companies()
-comp_dict = {c["name"]: c for c in companies}
-
-with c_col:
-    st.caption("ОРГАНИЗАЦИЯ (ВЫРУЧКА >15 МЛРД РУБ.)")
+# ==========================================
+# 1. ШТОРКА СЛЕВА (БОКОВОЕ МЕНЮ БАНКА)
+# ==========================================
+with st.sidebar:
+    st.markdown(f'<div style="display:flex;align-items:center;margin-bottom:18px;">{get_logo_html()}<b>АЛЬФА-БИЗНЕС</b></div>', unsafe_allow_html=True)
+    
+    st.caption("ОРГАНИЗАЦИЯ")
+    companies = fetch_companies()
+    comp_dict = {c["name"]: c for c in companies}
     selected_name = st.selectbox("Клиент", list(comp_dict.keys()), label_visibility="collapsed")
     comp = comp_dict[selected_name]
 
-with r_col:
     st.caption("РОЛЬ ЛПР (СЛАЙД 5)")
     role_map = {
         "CFO": "Финансовый директор (CFO)",
@@ -396,16 +422,37 @@ with r_col:
     selected_role_label = st.selectbox("Роль", list(role_map.values()), index=0, label_visibility="collapsed")
     current_role_code = [k for k, v in role_map.items() if v == selected_role_label][0]
 
-with m_col:
-    st.metric(
-        label="Выручка (REVENUE)",
-        value=f"{comp['revenue_mln']:,.0f} млн ₽".replace(",", " "),
-        delta=f"Долг: {comp['debt_mln']:,.0f} млн ₽".replace(",", " "),
-        delta_color="inverse"
-    )
-st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("<hr style='margin:16px 0;border:none;border-top:1px solid #E5E7EB;'>", unsafe_allow_html=True)
+    
+    st.caption("РАЗДЕЛЫ БАНКА")
+    st.markdown("""
+    <div class="menu-item">Счета и выписки</div>
+    <div class="menu-item">Платежи и переводы</div>
+    <div class="menu-item active">⚡ Альфа-Инсайт</div>
+    <div class="menu-item">ВЭД и валютный контроль</div>
+    <div class="menu-item">Кредитные линии</div>
+    """, unsafe_allow_html=True)
 
-# ТОЧКА ВХОДА (Критерий 09)
+    st.markdown("<div style='height:40px;'></div>", unsafe_allow_html=True)
+    st.caption("ТЕСТОВЫЙ КОНТУР")
+    st.markdown("<div style='font-size:0.75rem;color:#9CA3AF;'>Аккаунт: <b>alfa-hack-2026</b><br>Версия: Release Candidate 1.0</div>", unsafe_allow_html=True)
+
+# ==========================================
+# 2. ОСНОВНАЯ ОБЛАСТЬ (ЭКРАН АЛЬФА-ИНСАЙТ)
+# ==========================================
+
+# Верхняя информационная полоса с показателями клиента
+top_nav = (
+    '<div class="alfa-top-nav">'
+    '<div style="display:flex;align-items:center;">'
+    f'<span class="alfa-nav-text">{comp["name"]} &nbsp;•&nbsp; {comp["okved"]}</span>'
+    '</div>'
+    f'<div class="alfa-nav-tag">Выручка: {comp["revenue_mln"]:,.0f} млн ₽ | Долг: {comp["debt_mln"]:,.0f} млн ₽</div>'
+    '</div>'
+)
+st.markdown(top_nav, unsafe_allow_html=True)
+
+# Точка входа (Критерий 09)
 insights = fetch_feed(comp["id"], current_role_code)
 entry_html = (
     '<div class="alfa-entry">'
@@ -418,7 +465,7 @@ entry_html = (
 )
 st.markdown(entry_html, unsafe_allow_html=True)
 
-# КАРТОЧКА ИНСАЙТА (Все 6 блоков)
+# Карточка инсайта (Все 6 блоков)
 for ins in insights:
     st.markdown('<div class="alfa-card">', unsafe_allow_html=True)
     
