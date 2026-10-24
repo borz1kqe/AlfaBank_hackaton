@@ -5,7 +5,10 @@ Live AI Multi-Model Router: Контрастная кнопка шторки, Co
 """
 
 import streamlit as st
-import streamlit.components.v1 as components
+try:
+    import streamlit.components.v1 as components
+except Exception:
+    components = None
 import requests
 import os
 import sys
@@ -702,8 +705,23 @@ INSIGHTS = {
     }]
 }
 
+def _build_messages(system_msg: str, context: str, prompt: str, history: list = None) -> list:
+    msgs = [{
+        "role": "system",
+        "content": (
+            system_msg
+            + "\n4. Это продолжающийся диалог: учитывай предыдущие реплики, не повторяй уже сказанное и развивай расчёт."
+            + f"\n\nКонтекст предприятия:\n{context}"
+        )
+    }]
+    for turn in (history or [])[-6:]:
+        msgs.append({"role": "user", "content": turn["q"]})
+        msgs.append({"role": "assistant", "content": turn["a"]})
+    msgs.append({"role": "user", "content": f"Вопрос руководителя:\n{prompt}"})
+    return msgs
+
 # ВЫЗОВ МОДЕЛИ С COOLDOWN-ЗАЩИТОЙ И 1800 ТОКЕНАМИ
-def call_live_llm(prompt: str, context: str) -> str:
+def call_live_llm(prompt: str, context: str, history: list = None) -> str:
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json"
@@ -719,10 +737,7 @@ def call_live_llm(prompt: str, context: str) -> str:
     )
     payload = {
         "model": LLM_MODEL,
-        "messages": [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": f"Контекст предприятия:\n{context}\n\nВопрос руководителя:\n{prompt}"}
-        ],
+        "messages": _build_messages(system_msg, context, prompt, history),
         "temperature": 0.3,
         "max_tokens": 1800
     }
@@ -739,7 +754,7 @@ def call_live_llm(prompt: str, context: str) -> str:
             continue
     return None
 
-def ask_ai_chat(company: dict, role: str, insight: dict, question: str) -> str:
+def ask_ai_chat(company: dict, role: str, insight: dict, question: str, history: list = None) -> str:
     ctx = (
         f"Компания: {company.get('display_name')}\n"
         f"ОКВЭД: {company.get('main_okved_code')}\n"
@@ -749,7 +764,7 @@ def ask_ai_chat(company: dict, role: str, insight: dict, question: str) -> str:
         f"Позиция Альфа-Банка: {insight.get('alfa_quote')}"
     )
 
-    live_result = call_live_llm(question, ctx)
+    live_result = call_live_llm(question, ctx, history)
     if live_result:
         return live_result
 
@@ -860,7 +875,10 @@ _SIDEBAR_BTN_JS = """
 """
 
 with st.sidebar:
-    components.html(_SIDEBAR_BTN_JS, height=0)
+    if hasattr(st, "iframe"):
+        st.iframe(_SIDEBAR_BTN_JS, height=1)
+    elif components is not None:
+        components.html(_SIDEBAR_BTN_JS, height=0)
 
 # ОСНОВНОЙ ЭКРАН
 if active_section == "Счета и выписки":
@@ -1052,6 +1070,10 @@ else:
                 st.markdown(f"• {t}")
 
         st.markdown("<hr style='border:none;border-top:1px solid #E5E7EB;margin:20px 0;'>", unsafe_allow_html=True)
+
+        # Переписка выводится над полем ввода; контейнер наполняется после обработки вопроса
+        hist_box = st.container()
+
         st.markdown('<div style="font-size:0.92rem;font-weight:700;color:#111827;margin-bottom:10px;">Уточняющие вопросы AI-аналитику:</div>', unsafe_allow_html=True)
 
         col_q1, col_q2 = st.columns(2)
@@ -1065,14 +1087,30 @@ else:
 
         st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
 
+        inp_key = f"inp_{ins['id']}"
+        send_key = f"send_{ins['id']}"
+        # очистка поля после отправки (должна произойти до создания виджета)
+        if st.session_state.pop(f"clear_{ins['id']}", False):
+            st.session_state[inp_key] = ""
+
+        def _on_enter(k=send_key):
+            st.session_state[k] = True
+
         col_input, col_submit = st.columns([4.2, 1])
         with col_input:
-            u_query = st.text_input("Вопрос", key=f"inp_{ins['id']}", placeholder="Спросите о ликвидности, кредитах или ВЭД...", label_visibility="collapsed")
+            u_query = st.text_input("Вопрос", key=inp_key, placeholder="Задайте следующий вопрос: о ликвидности, кредитах или ВЭД...", label_visibility="collapsed", on_change=_on_enter)
         with col_submit:
             ask_clicked = st.button("Спросить", key=f"ask_{ins['id']}")
 
-        if ask_clicked or selected_preset:
-            txt = selected_preset if selected_preset else u_query
+        enter_pressed = st.session_state.pop(send_key, False)
+
+        history = st.session_state.chat_history.get(ins['id'], [])
+        if isinstance(history, dict):  # совместимость со старым форматом (одна пара вопрос-ответ)
+            history = [history]
+        st.session_state.chat_history[ins['id']] = history
+
+        if ask_clicked or selected_preset or enter_pressed:
+            txt = selected_preset if selected_preset else (u_query or "").strip()
             if txt:
                 # АВТОМАТИЧЕСКИЙ COOLDOWN (3 СЕКУНДЫ ДЛЯ ЗАЩИТЫ ОТ 429 RATE LIMIT)
                 now_ts = time.time()
@@ -1082,18 +1120,22 @@ else:
                 st.session_state.last_api_call = time.time()
 
                 with st.spinner("AI-агент DeepSeek рассчитывает финансовые показатели..."):
-                    ans = ask_ai_chat(current_company, selected_role_label, ins, txt)
-                    st.session_state.chat_history[ins['id']] = {"q": txt, "a": ans}
+                    ans = ask_ai_chat(current_company, selected_role_label, ins, txt, history)
+                history.append({"q": txt, "a": ans})
+                if not selected_preset:
+                    st.session_state[f"clear_{ins['id']}"] = True
+                st.rerun()
 
-        if ins['id'] in st.session_state.chat_history:
-            h = st.session_state.chat_history[ins['id']]
-            st.markdown(f'<div class="chat-bubble-user"><b>Вы:</b> {h["q"]}</div>', unsafe_allow_html=True)
-            
-            # РЕНДЕРИМ ОТВЕТ С ЧИСТЫМ ФОРМАТИРОВАНИЕМ (БЕЗ СЫРЫХ ЗВЕЗДОЧЕК)
-            st.markdown('<div class="chat-bubble-ai-wrap">', unsafe_allow_html=True)
-            st.markdown(h["a"])
-            st.markdown('</div>', unsafe_allow_html=True)
-
+        with hist_box:
+            for h in history:
+                st.markdown(f'<div class="chat-bubble-user"><b>Вы:</b> {h["q"]}</div>', unsafe_allow_html=True)
+                # РЕНДЕРИМ ОТВЕТ С ЧИСТЫМ ФОРМАТИРОВАНИЕМ (БЕЗ СЫРЫХ ЗВЕЗДОЧЕК)
+                with st.container(border=True):
+                    st.markdown(h["a"])
+            if history:
+                if st.button("Очистить диалог", key=f"clr_{ins['id']}"):
+                    st.session_state.chat_history[ins['id']] = []
+                    st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("<center style='color:#9CA3AF;font-size:0.8rem;margin-top:20px;'>Интернет-банк «Альфа-Бизнес» &nbsp;•&nbsp; Сервис «Альфа-Инсайт»</center>", unsafe_allow_html=True)
