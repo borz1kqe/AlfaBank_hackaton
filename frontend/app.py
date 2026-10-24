@@ -19,7 +19,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Определение базового URL бэкенда (Docker или локально)
 ENV_BACKEND = os.getenv("API_BASE_URL") or os.getenv("BACKEND_URL")
 BACKEND_CANDIDATES = [
     ENV_BACKEND,
@@ -40,7 +39,6 @@ def get_backend_url() -> str:
             pass
     return "http://localhost:8000"
 
-# Векторный логотип Альфа-Банка
 def get_logo_html() -> str:
     paths = [
         Path("logos/alfa-bank-business.svg"),
@@ -60,12 +58,21 @@ def get_logo_html() -> str:
                 pass
     return '<span style="background:#EF3124;color:#FFFFFF;padding:4px 10px;border-radius:6px;font-weight:900;font-size:0.9rem;margin-right:10px;">А</span>'
 
-# ПРЕМИАЛЬНЫЙ СТИЛЬ: ГЛУБОКАЯ ЧЕРНАЯ ШТОРКА + СВЕТЛЫЙ ХОЛСТ
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
     header, #MainMenu, footer { visibility: hidden; height: 0; }
+
+    /* ФИКС: УБИРАЕМ ТЕКСТОВЫЙ БАГ keyboard_double_ И КНОПКУ СВОРАЧИВАНИЯ */
+    [data-testid="stSidebarCollapseButton"],
+    button[data-testid="stSidebarCollapseButton"],
+    [data-testid="stSidebarHeader"] button,
+    [data-testid="stSidebarHeader"] {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+    }
 
     /* 1. ЛЕВАЯ ШТОРКА (ГРАФИТОВО-ЧЕРНЫЙ TITANIUM) */
     [data-testid="stSidebar"] {
@@ -73,11 +80,13 @@ st.markdown("""
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
     [data-testid="stSidebar"] .block-container {
-        padding: 2rem 1.2rem !important;
+        padding: 1.5rem 1.2rem !important;
     }
-    [data-testid="stSidebar"] * {
-        color: #F9FAFB !important;
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif !important;
+    [data-testid="stSidebar"] div:not([data-testid="stSidebarCollapseButton"]), 
+    [data-testid="stSidebar"] p, 
+    [data-testid="stSidebar"] span {
+        color: #F9FAFB;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif;
     }
     [data-testid="stSidebar"] label, [data-testid="stSidebar"] .stCaption {
         color: #9CA3AF !important;
@@ -130,7 +139,6 @@ st.markdown("""
         letter-spacing: -0.018em;
     }
 
-    /* Верхний инфо-бар компании */
     .apple-kpi-bar {
         background: #FFFFFF;
         border: 1px solid rgba(0, 0, 0, 0.05);
@@ -142,8 +150,6 @@ st.markdown("""
         justify-content: space-between;
         align-items: center;
     }
-
-    /* Баннер точки входа */
     .apple-hero-banner {
         background: #FFFFFF;
         border: 1px solid rgba(0, 0, 0, 0.06);
@@ -164,8 +170,6 @@ st.markdown("""
         text-transform: uppercase;
         letter-spacing: 0.02em;
     }
-
-    /* Главная карточка */
     .apple-card-panel {
         background: #FFFFFF;
         border: 1px solid rgba(0, 0, 0, 0.06);
@@ -182,8 +186,6 @@ st.markdown("""
         letter-spacing: -0.025em;
         margin: 10px 0 20px 0;
     }
-
-    /* Подложки */
     .apple-subbox {
         background: #F9FAFB;
         border: 1px solid #E5E7EB;
@@ -203,8 +205,6 @@ st.markdown("""
         margin-right: 6px;
         margin-bottom: 6px;
     }
-
-    /* Риски и возможности */
     .apple-risk-row {
         background: #FFF8F8;
         border: 1px solid #FEE2E2;
@@ -225,8 +225,6 @@ st.markdown("""
         line-height: 1.45;
         margin-bottom: 8px;
     }
-
-    /* Банк vs ИИ */
     .apple-box-bank {
         background: #F8FAFC;
         border: 1px solid #E0F2FE;
@@ -243,8 +241,6 @@ st.markdown("""
         padding: 18px 22px;
         height: 100%;
     }
-
-    /* Кнопки */
     div.stButton > button {
         background-color: #EF3124 !important;
         color: #FFFFFF !important;
@@ -258,7 +254,6 @@ st.markdown("""
     div.stButton > button:hover {
         opacity: 0.9 !important;
     }
-
     .stTextInput input {
         background-color: #FFFFFF !important;
         color: #111827 !important;
@@ -275,7 +270,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ЧИСТЫЕ ВЕКТОРНЫЕ SVG-ИКОНКИ (100% ВЕКТОР БЕЗ СМАЙЛОВ)
+# Иконки SVG
 SVG = {
     "lightning": '<svg width="15" height="15" viewBox="0 0 24 24" fill="#EF3124" stroke="#EF3124" stroke-width="1" style="vertical-align:-2px;margin-right:6px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
     "shield": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
@@ -286,7 +281,6 @@ SVG = {
     "check": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>'
 }
 
-# --- МОК-СЛОЙ, ПОЛНОСТЬЮ СОВПАДАЮЩИЙ С БЭКЕНДОМ (src/api/main.py) ---
 FALLBACK_COMPANIES = [
     {
         "synthetic_u": "U_1001",
@@ -309,8 +303,6 @@ FALLBACK_COMPANIES = [
         "debt_preview": "14.2 млрд ₽ (лизинг и оборот)"
     }
 ]
-
-# --- ФУНКЦИИ ОБЩЕНИЯ С РЕАЛЬНЫМ FASTAPI БЭКЕНДОМ ---
 
 def fetch_companies_from_api() -> List[Dict[str, Any]]:
     backend = get_backend_url()
@@ -380,7 +372,6 @@ def fetch_feed_from_api(company_id: str, role: str) -> List[Dict[str, Any]]:
     except Exception:
         pass
 
-    # Автономный запасной сценарий
     return [{
         "id": "ins_fallback_cbr",
         "title": "Банк России сохранил ключевую ставку на уровне 14,0%: пауза в цикле смягчения",
@@ -452,9 +443,7 @@ if "chat_history" not in st.session_state:
 if "applied_products" not in st.session_state:
     st.session_state.applied_products = set()
 
-# ========================================================
-# 1. ТЕМНАЯ ШТОРКА (TITANIUM BLACK SIDEBAR)
-# ========================================================
+# 1. ТЕМНАЯ ШТОРКА
 with st.sidebar:
     st.markdown(f'<div style="display:flex;align-items:center;margin-bottom:20px;">{get_logo_html()}<span style="font-weight:700;font-size:1.1rem;letter-spacing:-0.02em;">АЛЬФА-БИЗНЕС</span></div>', unsafe_allow_html=True)
     
@@ -491,11 +480,7 @@ with st.sidebar:
     st.caption("БЕЗОПАСНЫЙ КОНТУР")
     st.markdown("<div style='font-size:0.75rem;color:#9CA3AF;'>Режим: Корпоративный доступ<br>Статус: RBAC Verified</div>", unsafe_allow_html=True)
 
-# ========================================================
-# 2. ОСНОВНОЙ ЭКРАН (APPLE FINTECH STAGE)
-# ========================================================
-
-# Верхний инфо-бар компании с крупными метриками
+# 2. ОСНОВНОЙ ЭКРАН
 comp_rev = float(current_company.get("revenue", 68500000000.0)) / 1_000_000
 kpi_html = (
     '<div class="apple-kpi-bar">'
@@ -511,7 +496,6 @@ kpi_html = (
 )
 st.markdown(kpi_html, unsafe_allow_html=True)
 
-# Точка входа: Альфа-Инсайт
 insights = fetch_feed_from_api(company_id, current_role_code)
 entry_html = (
     '<div class="apple-hero-banner">'
@@ -524,7 +508,6 @@ entry_html = (
 )
 st.markdown(entry_html, unsafe_allow_html=True)
 
-# Карточка инсайта (Все 6 блоков)
 for ins in insights:
     st.markdown('<div class="apple-card-panel">', unsafe_allow_html=True)
     
@@ -537,7 +520,6 @@ for ins in insights:
     )
     st.markdown(card_header, unsafe_allow_html=True)
 
-    # Блоки 1 и 2
     b1, b2 = st.columns(2)
     with b1:
         st.caption("1. ЧТО ПРОИЗОШЛО")
@@ -562,7 +544,6 @@ for ins in insights:
 
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-    # Блок 3: Риски vs Возможности
     st.caption("3. ПРОГНОЗ ПОСЛЕДСТВИЙ ДЛЯ БИЗНЕСА")
     rc, oc = st.columns(2)
     with rc:
@@ -576,7 +557,6 @@ for ins in insights:
 
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-    # Блок 4: Банк vs ИИ
     st.caption("4. ОЦЕНКА АЛЬФА-БАНКА VS ВЫВОД ИИ")
     mc, aic = st.columns(2)
     with mc:
@@ -600,7 +580,6 @@ for ins in insights:
 
     st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
 
-    # Блок 5: Действия + Встроенная карточка продукта
     st.caption(f"5. РЕКОМЕНДУЕМЫЕ ДЕЙСТВИЯ ДЛЯ РОЛИ: {selected_role_label.upper()}")
     for s_idx, act in enumerate(ins["actions"], 1):
         st.checkbox(f"Шаг {s_idx}: {act}", key=f"step_{ins['id']}_{s_idx}")
@@ -628,13 +607,11 @@ for ins in insights:
 
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-    # Блок 6: Аудит-лог
     with st.expander("Аудит-лог и происхождение выводов (Traceability)"):
         st.caption("Пошаговый протокол рассуждения многошагового агента:")
         for t in ins["trace"]:
             st.markdown(f"• {t}")
 
-    # Интерактивный чат
     st.markdown("<hr style='border:none;border-top:1px solid #E5E7EB;margin:22px 0;'>", unsafe_allow_html=True)
     st.markdown('<div class="chat-label-text">Задать уточняющий вопрос AI-аналитику по новости:</div>', unsafe_allow_html=True)
 
