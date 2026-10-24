@@ -462,19 +462,40 @@ st.markdown("""
     /* Основные действия: красные кнопки */
     [class*="st-key-ask_"] button,
     [class*="st-key-btn_prod_"] button {
-        background: linear-gradient(135deg, #EF3124 0%, #D42A1E 100%) !important;
+        background: linear-gradient(180deg, #FF4B3E 0%, #EF3124 52%, #D3281C 100%) !important;
         color: #FFFFFF !important;
-        border: none !important;
-        font-weight: 700 !important;
-        box-shadow: 0 6px 16px rgba(239, 49, 36, 0.28) !important;
+        border: 1px solid rgba(255, 255, 255, 0.28) !important;
+        border-radius: 980px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.005em !important;
+        text-shadow: 0 1px 1px rgba(120, 10, 5, 0.25);
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.38) inset,
+                    0 -1px 0 rgba(0, 0, 0, 0.08) inset,
+                    0 8px 20px rgba(239, 49, 36, 0.30),
+                    0 2px 5px rgba(239, 49, 36, 0.22) !important;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease !important;
+    }
+    [class*="st-key-ask_"] button p, [class*="st-key-ask_"] button span,
+    [class*="st-key-btn_prod_"] button p, [class*="st-key-btn_prod_"] button span {
+        color: #FFFFFF !important;
     }
     [class*="st-key-ask_"] button:hover,
     [class*="st-key-btn_prod_"] button:hover {
-        background: linear-gradient(135deg, #F24237 0%, #D42A1E 100%) !important;
-        transform: translateY(-1px);
-        box-shadow: 0 10px 22px rgba(239, 49, 36, 0.36) !important;
+        background: linear-gradient(180deg, #FF5B4F 0%, #F23A2D 52%, #DB2D20 100%) !important;
         color: #FFFFFF !important;
+        border-color: rgba(255, 255, 255, 0.4) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.45) inset,
+                    0 -1px 0 rgba(0, 0, 0, 0.08) inset,
+                    0 12px 26px rgba(239, 49, 36, 0.38),
+                    0 3px 8px rgba(239, 49, 36, 0.26) !important;
     }
+    [class*="st-key-ask_"] button:active,
+    [class*="st-key-btn_prod_"] button:active {
+        transform: translateY(0) scale(0.98);
+        filter: brightness(0.96);
+    }
+    .chat-bubble-user, .chat-bubble-user * { color: #FFFFFF !important; }
     div.stButton > button:hover { transform: translateY(-1px); }
 
     /* Поля ввода */
@@ -522,15 +543,17 @@ st.markdown("""
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 8px; }
 
-    /* ШРИФТ: Times New Roman везде (иконки Material не трогаем) */
+    /* ШРИФТ: San Francisco (иконки Material не трогаем) */
     html, body, .stApp,
     .stApp *:not([data-testid="stIconMaterial"]):not(.material-icons):not(.material-symbols-rounded),
     [data-testid="stSidebar"] *:not([data-testid="stIconMaterial"]) {
-        font-family: "Times New Roman", Times, "Liberation Serif", serif !important;
-        letter-spacing: 0 !important;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Inter", "Segoe UI", Roboto, Arial, sans-serif !important;
+        -webkit-font-smoothing: antialiased;
+        letter-spacing: -0.011em !important;
     }
-    .apple-title-h2 { font-size: 1.45rem; }
-    div.stButton > button, [data-testid="stCheckbox"] label { font-size: 0.95rem !important; }
+    .apple-title-h2 { font-size: 1.35rem; letter-spacing: -0.025em !important; }
+    div.stButton > button { font-size: 0.88rem !important; }
+    [data-testid="stCheckbox"] label { font-size: 0.92rem !important; }
 
     /* Пустая оболочка карточки создавала белый пустой блок */
     .apple-card-panel:empty { display: none !important; }
