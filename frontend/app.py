@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»
-Live AI Integration: Официальный LLM-шлюз Хакатона Альфа-Банка 2026
+Live AI Integration + Интерактивное боковое меню разделов банка
 """
 
 import streamlit as st
@@ -12,11 +12,24 @@ import base64
 from pathlib import Path
 from typing import Dict, List, Any
 
-# Получение ключей из защищенных Streamlit Secrets или переменных среды
-LLM_API_KEY = st.secrets.get("LLM_API_KEY") if hasattr(st, "secrets") and "LLM_API_KEY" in st.secrets else os.getenv("LLM_API_KEY", "sk-ARm7HMnjyUUX-_sG3Qsicw")
-LLM_BASE_URL = st.secrets.get("LLM_BASE_URL") if hasattr(st, "secrets") and "LLM_BASE_URL" in st.secrets else os.getenv("LLM_BASE_URL", "https://changellenge.up.railway.app/v1")
-LLM_MODEL = st.secrets.get("LLM_MODEL") if hasattr(st, "secrets") and "LLM_MODEL" in st.secrets else os.getenv("LLM_MODEL", "deepseek/deepseek-v4.1-flash")
-BACKUP_LLM_URL = "https://api.alfahack-gateway26.ru/v1"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+BACKEND_IMPORTED = False
+try:
+    from src.api.main import (
+        COMPANIES_DB,
+        NEWS_DB,
+        BANK_RESEARCH_DB,
+        agent as backend_agent,
+        get_company_context,
+        ask_followup_question,
+        ChatRequest
+    )
+    BACKEND_IMPORTED = True
+except Exception:
+    BACKEND_IMPORTED = False
 
 st.set_page_config(
     page_title="Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»",
@@ -24,6 +37,27 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Ключи и настройки
+LLM_API_KEY = st.secrets.get("LLM_API_KEY") if hasattr(st, "secrets") and "LLM_API_KEY" in st.secrets else os.getenv("LLM_API_KEY", "sk-ARm7HMnjyUUX-_sG3Qsicw")
+LLM_BASE_URL = st.secrets.get("LLM_BASE_URL") if hasattr(st, "secrets") and "LLM_BASE_URL" in st.secrets else os.getenv("LLM_BASE_URL", "https://changellenge.up.railway.app/v1")
+LLM_MODEL = st.secrets.get("LLM_MODEL") if hasattr(st, "secrets") and "LLM_MODEL" in st.secrets else os.getenv("LLM_MODEL", "deepseek/deepseek-v4.1-flash")
+BACKUP_LLM_URL = "https://api.alfahack-gateway26.ru/v1"
+
+ENV_BACKEND = os.getenv("API_BASE_URL") or os.getenv("BACKEND_URL")
+BACKEND_CANDIDATES = [ENV_BACKEND, "http://backend:8000", "http://localhost:8000", "http://127.0.0.1:8000"]
+
+def get_backend_http_url() -> str:
+    for base in BACKEND_CANDIDATES:
+        if not base:
+            continue
+        try:
+            r = requests.get(f"{base}/health", timeout=0.3)
+            if r.status_code == 200:
+                return base
+        except Exception:
+            pass
+    return None
 
 def get_logo_html() -> str:
     paths = [
@@ -50,7 +84,6 @@ st.markdown("""
 
     header, #MainMenu, footer { visibility: hidden; height: 0; }
 
-    /* Убираем баг сворачивания */
     [data-testid="stSidebarCollapseButton"],
     button[data-testid="stSidebarCollapseButton"],
     [data-testid="stSidebarHeader"] {
@@ -59,7 +92,7 @@ st.markdown("""
         height: 0 !important;
     }
 
-    /* ШТОРКА (ГРАФИТОВЫЙ ЧЕРНЫЙ) */
+    /* ШТОРКА */
     [data-testid="stSidebar"] {
         background-color: #111827 !important;
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -90,22 +123,35 @@ st.markdown("""
         fill: #9CA3AF !important;
     }
 
-    .side-nav-item {
-        padding: 10px 14px;
-        border-radius: 10px;
-        font-size: 0.88rem;
-        color: #9CA3AF !important;
-        margin-bottom: 4px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
+    /* Стилизация радио-кнопок в шторке под кликабельное меню */
+    [data-testid="stSidebar"] div[data-testid="stRadio"] > div {
+        gap: 6px;
     }
-    .side-nav-item.active {
+    [data-testid="stSidebar"] div[data-testid="stRadio"] label {
+        background-color: transparent !important;
+        padding: 10px 14px !important;
+        border-radius: 10px !important;
+        color: #9CA3AF !important;
+        font-size: 0.88rem !important;
+        font-weight: 500 !important;
+        text-transform: none !important;
+        letter-spacing: normal !important;
+        cursor: pointer !important;
+        transition: all 0.15s ease !important;
+    }
+    [data-testid="stSidebar"] div[data-testid="stRadio"] label:hover {
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        color: #FFFFFF !important;
+    }
+    [data-testid="stSidebar"] div[data-testid="stRadio"] label:has(input:checked) {
         background: rgba(239, 49, 36, 0.12) !important;
         color: #EF3124 !important;
         font-weight: 700 !important;
-        border-left: 3px solid #EF3124;
-        border-radius: 0 10px 10px 0;
+        border-left: 3px solid #EF3124 !important;
+        border-radius: 0 10px 10px 0 !important;
+    }
+    [data-testid="stSidebar"] div[data-testid="stRadio"] input {
+        display: none !important;
     }
 
     /* ОСНОВНОЙ ЭКРАН */
@@ -230,7 +276,7 @@ st.markdown("""
         height: 100%;
     }
 
-    /* Карточка продукта */
+    /* БАНКОВСКАЯ КАРТОЧКА ПРОДУКТА */
     .product-unified-card {
         background: #F9FAFB;
         border: 1px solid #E5E7EB;
@@ -240,7 +286,7 @@ st.markdown("""
         margin-top: 16px;
     }
 
-    /* Кнопки */
+    /* КНОПКИ APPLE */
     div.stButton > button {
         background-color: #FFFFFF !important;
         color: #374151 !important;
@@ -258,9 +304,7 @@ st.markdown("""
         color: #111827 !important;
     }
 
-    .stTextInput div[data-baseweb="input"] {
-        border-radius: 12px !important;
-    }
+    .stTextInput div[data-baseweb="input"] { border-radius: 12px !important; }
     .stTextInput input {
         background-color: #FFFFFF !important;
         color: #111827 !important;
@@ -290,10 +334,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 SVG = {
-    "lightning": '<svg width="15" height="15" viewBox="0 0 24 24" fill="#EF3124" stroke="#EF3124" stroke-width="1" style="vertical-align:-2px;margin-right:6px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
     "shield": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
     "trend": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>',
-    "bank": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0071E3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><rect width="20" height="4" x="2" y="3" rx="1"/><path d="M4 7v11"/><path d="M8 7v11"/><path d="M12 7v11"/><path d="M16 7v11"/><path d="M20 7v11"/></svg>',
+    "bank": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0071E3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><rect width="20" height="4" x="2" y="3" rx="1"/><path d="M4 7v11"/><path d="M8 7v11"/><path d="M12 7v11"/><path d="M16 7v11"/><path d="M20 7v11"/><rect width="20" height="3" x="2" y="18" rx="1"/></svg>',
     "sparkles": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF3124" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z"/></svg>',
     "tag": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M12 2H2v10l9.29 9.29a2.41 2.41 0 0 0 3.42 0l6.58-6.58a2.41 2.41 0 0 0 0-3.42L12 2Z"/><circle cx="7" cy="7" r="1.5"/></svg>',
     "check": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>'
@@ -358,7 +401,7 @@ INSIGHTS = {
         ],
         "prod_badge": "Рекомендация банка",
         "prod_title": "Хеджирование процентных рисков (IRS Альфа-Банк)",
-        "prod_desc": "Зафиксируйте ставку по кредитам с плавающей ставкой на уровне 12.6% на 24 месяца для защиты бюджета.",
+        "prod_desc": "Зафиксируйте ставку по кредитам с плавающей ставкой на уровне 12.6% на срок до 24 месяцев для защиты бюджета.",
         "prod_btn": "Рассчитать параметры свопа",
         "trace": [
             "Planning: анализ регуляторного события по ДКП и долгового портфеля",
@@ -412,7 +455,6 @@ INSIGHTS = {
     }]
 }
 
-# Функция вызова живой модели через шлюз хакатона
 def call_live_llm(prompt: str, context: str) -> str:
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
@@ -420,9 +462,7 @@ def call_live_llm(prompt: str, context: str) -> str:
     }
     system_msg = (
         "Ты — старший финансово-экономический аналитик Центра макроэкономических исследований Альфа-Банка. "
-        "Твоя задача — давать четкие, аргументированные, емкие ответы руководителям крупного бизнеса (CEO, CFO). "
-        "Опирайся на контекст компании и официальную позицию Банка России по ключевой ставке 14%. "
-        "Не используй общие фразы. Приводи конкретные финансовые расчеты и рекомендации банковских продуктов Альфа-Банка."
+        "Давай четкие, емкие ответы топ-менеджерам крупного бизнеса. Опирайся на точные цифры компании и позицию Банка России."
     )
     payload = {
         "model": LLM_MODEL,
@@ -433,16 +473,11 @@ def call_live_llm(prompt: str, context: str) -> str:
         "temperature": 0.3,
         "max_tokens": 600
     }
-    
-    # 1. Пробуем основной шлюз
     for url in [f"{LLM_BASE_URL}/chat/completions", f"{BACKUP_LLM_URL}/chat/completions"]:
         try:
             r = requests.post(url, headers=headers, json=payload, timeout=9.0)
             if r.status_code == 200:
-                data = r.json()
-                return data["choices"][0]["message"]["content"]
-            elif r.status_code == 429 or "Budget" in r.text:
-                return "Лимит токенов на сегодня исчерпан (сброс в 3:00 МСК). Используется локальный экспертный расчет."
+                return r.json()["choices"][0]["message"]["content"]
         except Exception:
             pass
     return None
@@ -450,26 +485,22 @@ def call_live_llm(prompt: str, context: str) -> str:
 def ask_ai_chat(company: dict, role: str, insight: dict, question: str) -> str:
     q_clean = question.strip().lower()
     
-    # Фильтр бессмыслицы
-    if len(q_clean) < 4 or any(bad in q_clean for bad in ["цуй", "тест", "йцук", "фыва", "привет", "asdf", "доллобе", "пваа"]):
+    if len(q_clean) < 4 or any(bad in q_clean for bad in ["цуй", "тест", "йцук", "фыва", "привет", "asdf"]):
         return "Запрос не распознан как финансовый вопрос. Задайте вопрос о долговой нагрузке, цепочках поставок, ВЭД или ликвидности компании."
 
-    # Контекст для модели
     ctx = (
         f"Компания: {company.get('display_name')}\n"
-        f"ОКВЭД: {company.get('main_okved_code')} ({company.get('main_okved_name')})\n"
+        f"ОКВЭД: {company.get('main_okved_code')}\n"
         f"Выручка: {company.get('revenue')} руб., Долг: {company.get('debt_preview')}\n"
         f"Роль ЛПР: {role}\n"
         f"Новость: {insight.get('title')}\n"
         f"Позиция Альфа-Банка: {insight.get('alfa_quote')}"
     )
 
-    # 1. Пытаемся вызвать живую модель DeepSeek / Qwen
     live_answer = call_live_llm(question, ctx)
     if live_answer:
         return live_answer
 
-    # 2. Умный автономный экспертный расчет (fallback)
     if any(w in q_clean for w in ["долг", "нагрузк", "ставк", "процент", "кредит"]):
         return """**Финансовый анализ долговой нагрузки:**
 
@@ -478,23 +509,18 @@ def ask_ai_chat(company: dict, role: str, insight: dict, question: str) -> str:
 • Показатель покрытия долга (ICR) составит **3.15x** при допустимом ковенантном минимуме 2.80x.
 • **Рекомендация:** перевести 5.0 млрд руб. кредитного портфеля в фиксированную ставку 12.6% через соглашение IRS Альфа-Банка."""
 
-    if any(w in q_clean for w in ["поставщ", "покупател", "контрагент", "цепочк"]):
-        return """**Анализ устойчивости цепочки контрагентов:**
-
-1. Покупатели строительного сектора (контрагент U_3012) пролонгируют отсрочку расчетов на **30 дней** из-за паузы в удешевлении проектного финансирования.
-2. Ж/д операторы индексируют тарифы на **9–12%**, что увеличит транспортные расходы на 14.2 млн руб./мес.
-• **Рекомендация:** предложить контрагентам факторинг от Альфа-Банка для разблокировки оборотного капитала без роста кредиторской задолженности."""
-
     return f"""**Оценка аналитической службы Альфа-Инсайт:**
 
-С учетом масштаба бизнеса (выручка >68 млрд руб.) и параметров текущего макроэкономического отчета Банка, данное регуляторное решение требует синхронизации финансового и коммерческого планов на 4 квартал 2026 года. Рекомендуется смоделировать сценарий удержания ставки 14% до середины 2027 года на заседании бюджетного комитета."""
+С учетом масштаба бизнеса (выручка >68 млрд руб.) данное регуляторное решение требует синхронизации финансового и коммерческого планов на 4 квартал 2026 года. Рекомендуется вынести вопрос хеджирования ставки на заседание бюджетного комитета."""
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = {}
 if "applied_products" not in st.session_state:
     st.session_state.applied_products = set()
 
-# ШТОРКА
+# ========================================================
+# 1. ТЕМНАЯ ШТОРКА С РЕАЛЬНО КЛИКАБЕЛЬНЫМ МЕНЮ
+# ========================================================
 with st.sidebar:
     st.markdown(f'<div style="display:flex;align-items:center;margin-bottom:20px;">{get_logo_html()}<span style="font-weight:700;font-size:1.1rem;letter-spacing:-0.02em;">АЛЬФА-БИЗНЕС</span></div>', unsafe_allow_html=True)
     
@@ -516,194 +542,243 @@ with st.sidebar:
 
     st.markdown("<hr style='margin:18px 0;border:none;border-top:1px solid rgba(255,255,255,0.08);'>", unsafe_allow_html=True)
     
-    st.caption("МЕНЮ СЕРВИСОВ")
-    sidebar_menu = f"""
-    <div class="side-nav-item">Счета и выписки</div>
-    <div class="side-nav-item">Платежи и переводы</div>
-    <div class="side-nav-item active">{SVG['lightning']} Альфа-Инсайт</div>
-    <div class="side-nav-item">ВЭД и валютный контроль</div>
-    <div class="side-nav-item">Кредитные линии</div>
-    """
-    st.markdown(sidebar_menu, unsafe_allow_html=True)
+    st.caption("РАЗДЕЛЫ БАНКА")
+    active_section = st.radio(
+        "Навигация",
+        options=["⚡ Альфа-Инсайт", "Счета и выписки", "Кредитные линии", "ВЭД и валюта"],
+        index=0,
+        label_visibility="collapsed"
+    )
 
-    st.markdown("<div style='height:60px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:40px;'></div>", unsafe_allow_html=True)
     st.caption("БЕЗОПАСНЫЙ КОНТУР")
     st.markdown(f"<div style='font-size:0.75rem;color:#9CA3AF;'>Модель: <b>{LLM_MODEL.split('/')[-1]}</b><br>Шлюз: <b>Alfa AI Gateway Live</b></div>", unsafe_allow_html=True)
 
-# ОСНОВНОЙ ЭКРАН
-comp_rev = float(current_company["revenue"]) / 1_000_000
-kpi_html = (
-    '<div class="apple-kpi-bar">'
-    '<div>'
-    f'<div style="font-size:1.15rem;font-weight:700;color:#111827;">{current_company["display_name"]}</div>'
-    f'<div style="font-size:0.84rem;color:#6B7280;margin-top:2px;">ОКВЭД {current_company["main_okved_code"]} &nbsp;•&nbsp; {current_company["market_position_label"]}</div>'
-    '</div>'
-    '<div style="text-align:right;">'
-    f'<span style="font-size:1.45rem;font-weight:700;color:#111827;">{comp_rev:,.0f} млн ₽</span>'
-    f'<span style="background:#FEF2F2;color:#991B1B;padding:3px 8px;border-radius:6px;font-size:0.75rem;font-weight:600;margin-left:8px;">{current_company["debt_preview"]}</span>'
-    '</div>'
-    '</div>'
-)
-st.markdown(kpi_html, unsafe_allow_html=True)
+# ========================================================
+# 2. ОСНОВНОЙ ЭКРАН (ПЕРЕКЛЮЧАЕТСЯ ПО МЕНЮ СЛЕВА)
+# ========================================================
 
-insights = INSIGHTS.get(company_id, INSIGHTS["U_1001"])
-entry_html = (
-    '<div class="apple-hero-banner">'
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
-    '<div style="font-size:1.15rem;font-weight:700;color:#111827;">Альфа-Инсайт: Персонализированная аналитика рисков и возможностей</div>'
-    f'<span class="apple-badge-crit">Событий в фокусе: {len(insights)}</span>'
-    '</div>'
-    f'<div style="color:#4B5563;font-size:0.9rem;line-height:1.5;">Мультиагентный сервис сопоставил публикации рынка и макро-отчеты Альфа-Банка. Сформирован стратегический фокус для роли <b>{selected_role_label}</b>.</div>'
-    '</div>'
-)
-st.markdown(entry_html, unsafe_allow_html=True)
+# Если кликнули на «Счета и выписки»
+if active_section == "Счета и выписки":
+    st.markdown(f"<h2>Счета и остатки: {current_company['display_name']}</h2>", unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("""
+        <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:16px;padding:22px;">
+            <div style="font-size:0.8rem;color:#6B7280;font-weight:600;">ОСНОВНОЙ РАСЧЕТНЫЙ СЧЕТ (RUB)</div>
+            <div style="font-size:1.8rem;font-weight:700;color:#111827;margin-top:6px;">4 820 450 000 ₽</div>
+            <div style="font-size:0.82rem;color:#16A34A;margin-top:4px;">● Счет активен • Альфа-Банк Корпоративный</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c2:
+        st.markdown("""
+        <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:16px;padding:22px;">
+            <div style="font-size:0.8rem;color:#6B7280;font-weight:600;">ВАЛЮТНЫЙ СЧЕТ (CNY)</div>
+            <div style="font-size:1.8rem;font-weight:700;color:#111827;margin-top:6px;">84 200 000 ¥</div>
+            <div style="font-size:0.82rem;color:#0284C7;margin-top:4px;">● Филиал Альфа-Банка в Пекине (Прямой клиринг)</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-for ins in insights:
-    st.markdown('<div class="apple-card-panel">', unsafe_allow_html=True)
-    
-    card_header = (
-        '<div style="display:flex;justify-content:space-between;align-items:center;">'
-        '<span class="apple-badge-crit">Высокий приоритет</span>'
-        f'<span style="font-size:0.82rem;color:#6B7280;">{ins["date"]} &nbsp;•&nbsp; Источник: <b>{ins["source"]}</b></span>'
-        '</div>'
-        f'<div class="apple-title-h2">{ins["title"]}</div>'
-    )
-    st.markdown(card_header, unsafe_allow_html=True)
-
-    b1, b2 = st.columns(2)
-    with b1:
-        st.caption("1. ЧТО ПРОИЗОШЛО")
-        b1_html = (
-            '<div class="apple-subbox">'
-            f'<div style="font-size:0.9rem;line-height:1.5;color:#374151;margin-bottom:12px;">{ins["facts"]}</div>'
-            f'<a href="{ins["source_url"]}" target="_blank" style="font-size:0.82rem;color:#0071E3;text-decoration:none;font-weight:600;">Официальный первоисточник релиза &rarr;</a>'
-            '</div>'
-        )
-        st.markdown(b1_html, unsafe_allow_html=True)
-
-    with b2:
-        st.caption("2. ПОЧЕМУ ЭТО ВАЖНО ДЛЯ КОМПАНИИ")
-        pills = "".join([f'<span class="apple-tag-pill">{SVG["tag"]}{p}</span>' for p in ins["triggers"]])
-        b2_html = (
-            '<div class="apple-subbox">'
-            f'<div style="margin-bottom:8px;">{pills}</div>'
-            f'<div style="font-size:0.86rem;color:#4B5563;border-top:1px solid #E5E7EB;padding-top:8px;"><b>Влияние на цепочку контрагентов:</b> {ins["impact"]}</div>'
-            '</div>'
-        )
-        st.markdown(b2_html, unsafe_allow_html=True)
-
-    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-
-    st.caption("3. ПРОГНОЗ ПОСЛЕДСТВИЙ ДЛЯ БИЗНЕСА")
-    rc, oc = st.columns(2)
-    with rc:
-        st.markdown(f"<div style='font-size:0.88rem;font-weight:700;color:#DC2626;margin-bottom:6px;'>{SVG['shield']} Потенциальные риски</div>", unsafe_allow_html=True)
-        for r in ins["risks"]:
-            st.markdown(f'<div class="apple-risk-row">{r}</div>', unsafe_allow_html=True)
-    with oc:
-        st.markdown(f"<div style='font-size:0.88rem;font-weight:700;color:#16A34A;margin-bottom:6px;'>{SVG['trend']} Открывающиеся возможности</div>", unsafe_allow_html=True)
-        for o in ins["opps"]:
-            st.markdown(f'<div class="apple-opp-row">{SVG["check"]} {o}</div>', unsafe_allow_html=True)
-
-    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-
-    st.caption("4. ОЦЕНКА АЛЬФА-БАНКА VS ВЫВОД ИИ")
-    mc, aic = st.columns(2)
-    with mc:
-        b_html = (
-            '<div class="apple-box-bank">'
-            f'<div style="font-weight:700;color:#0071E3;font-size:0.92rem;margin-bottom:6px;">{SVG["bank"]} Позиция аналитиков Альфа-Банка</div>'
-            f'<div style="font-size:0.9rem;font-style:italic;color:#1E293B;margin-bottom:10px;line-height:1.45;">«{ins["alfa_quote"]}»</div>'
-            f'<div style="font-size:0.78rem;color:#64748B;">Материал: <b>{ins["alfa_report"]}</b><br>Базовый прогноз: {ins["alfa_forecast"]}</div>'
-            '</div>'
-        )
-        st.markdown(b_html, unsafe_allow_html=True)
-    with aic:
-        ai_html = (
-            '<div class="apple-box-ai">'
-            f'<div style="font-weight:700;color:#EF3124;font-size:0.92rem;margin-bottom:6px;">{SVG["sparkles"]} Персонализированный AI-вывод для предприятия</div>'
-            f'<div style="font-size:0.9rem;color:#1E293B;margin-bottom:10px;line-height:1.45;">{ins["ai_prediction"]}</div>'
-            f'<div style="font-size:0.78rem;color:#991B1B;">Уверенность модели: <b>{ins["ai_conf"]}</b> &nbsp;•&nbsp; Драйвер: {ins["ai_driver"]}</div>'
-            '</div>'
-        )
-        st.markdown(ai_html, unsafe_allow_html=True)
-
-    st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
-
-    st.caption(f"5. РЕКОМЕНДУЕМЫЕ ДЕЙСТВИЯ ДЛЯ РОЛИ: {selected_role_label.upper()}")
-    for s_idx, act in enumerate(ins["actions"], 1):
-        st.checkbox(f"Шаг {s_idx}: {act}", key=f"step_{ins['id']}_{s_idx}")
-
-    # БАНКОВСКИЙ ПРОДУКТ: СВЕТЛЫЙ, ЧЕТКИЙ, КНОПКА ВНУТРИ
-    pk = f"prod_{ins['id']}"
-    is_applied = pk in st.session_state.applied_products
-
+# Если кликнули на «Кредитные линии»
+elif active_section == "Кредитные линии":
+    st.markdown(f"<h2>Кредитный портфель: {current_company['display_name']}</h2>", unsafe_allow_html=True)
     st.markdown(f"""
-    <div class="product-unified-card">
-        <div style="font-size:0.75rem;font-weight:700;color:#EF3124;text-transform:uppercase;">
-            {ins["prod_badge"]}
-        </div>
-        <div style="font-size:1.1rem;font-weight:700;color:#111827;margin-top:4px;">
-            {ins["prod_title"]}
-        </div>
-        <div style="font-size:0.86rem;color:#4B5563;margin-top:4px;line-height:1.4;">
-            {ins["prod_desc"]}
+    <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-left:4px solid #EF3124;border-radius:16px;padding:24px;">
+        <div style="font-size:0.8rem;color:#6B7280;font-weight:700;">ГЕНЕРАЛЬНОЕ КРЕДИТНОЕ СОГЛАШЕНИЕ №ALF-774</div>
+        <div style="font-size:1.6rem;font-weight:700;color:#111827;margin-top:6px;">{current_company['debt_preview']}</div>
+        <div style="font-size:0.9rem;color:#374151;margin-top:8px;">
+            <b>Параметры:</b> Плавающая процентная ставка <b>КС ЦБ + 2.1%</b> годовых.<br>
+            <b>Срок действия:</b> до 28 декабря 2028 г. (Свободный лимит: 5.2 млрд ₽).
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-    
-    col_btn_left, col_btn_right = st.columns([1.5, 3])
-    with col_btn_left:
-        if is_applied:
-            st.markdown("<div style='color:#16A34A;font-weight:600;font-size:0.88rem;padding:8px 0;'>✓ Заявка передана банкиру</div>", unsafe_allow_html=True)
-        else:
-            if st.button(f"{ins['prod_btn']}", key=f"btn_{pk}"):
-                st.session_state.applied_products.add(pk)
-                st.balloons()
-                st.rerun()
+# Если кликнули на «ВЭД и валюта»
+elif active_section == "ВЭД и валюта":
+    st.markdown(f"<h2>ВЭД и таможенный контроль: {current_company['display_name']}</h2>", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:16px;padding:24px;">
+        <div style="font-size:1.1rem;font-weight:700;color:#111827;">Активные внешнеторговые контракты</div>
+        <div style="font-size:0.9rem;color:#4B5563;margin-top:6px;">
+            Профиль контрагентов: <b>Китай, Турция, ОАЭ</b>.<br>
+            Канал расчетов: Защищенный шлюз расчетов в юанях и дирхамах с предварительной комплаенс-валидацией ГТД.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+# ОСНОВНОЙ РАЗДЕЛ: «⚡ АЛЬФА-ИНСАЙТ»
+else:
+    comp_rev = float(current_company["revenue"]) / 1_000_000
+    kpi_html = (
+        '<div class="apple-kpi-bar">'
+        '<div>'
+        f'<div style="font-size:1.15rem;font-weight:700;color:#111827;">{current_company["display_name"]}</div>'
+        f'<div style="font-size:0.84rem;color:#6B7280;margin-top:2px;">ОКВЭД {current_company["main_okved_code"]} &nbsp;•&nbsp; {current_company["market_position_label"]}</div>'
+        '</div>'
+        '<div style="text-align:right;">'
+        f'<span style="font-size:1.45rem;font-weight:700;color:#111827;">{comp_rev:,.0f} млн ₽</span>'
+        f'<span style="background:#FEF2F2;color:#991B1B;padding:3px 8px;border-radius:6px;font-size:0.75rem;font-weight:600;margin-left:8px;">{current_company["debt_preview"]}</span>'
+        '</div>'
+        '</div>'
+    )
+    st.markdown(kpi_html, unsafe_allow_html=True)
 
-    with st.expander("Аудит-лог и происхождение выводов (Traceability)"):
-        st.caption("Пошаговый протокол рассуждения многошагового агента:")
-        for t in ins["trace"]:
-            st.markdown(f"• {t}")
+    insights = INSIGHTS.get(company_id, INSIGHTS["U_1001"])
+    entry_html = (
+        '<div class="apple-hero-banner">'
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
+        '<div style="font-size:1.15rem;font-weight:700;color:#111827;">Альфа-Инсайт: Персонализированная аналитика рисков и возможностей</div>'
+        f'<span class="apple-badge-crit">Событий в фокусе: {len(insights)}</span>'
+        '</div>'
+        f'<div style="color:#4B5563;font-size:0.9rem;line-height:1.5;">Мультиагентный сервис сопоставил публикации рынка и макро-отчеты Альфа-Банка. Сформирован стратегический фокус для роли <b>{selected_role_label}</b>.</div>'
+        '</div>'
+    )
+    st.markdown(entry_html, unsafe_allow_html=True)
 
-    # ЧАТ С ЖИВОЙ LLM DEEPSEEK / QWEN
-    st.markdown("<hr style='border:none;border-top:1px solid #E5E7EB;margin:22px 0;'>", unsafe_allow_html=True)
-    st.markdown('<div style="font-size:0.95rem;font-weight:700;color:#111827;margin-bottom:12px;">Уточняющие вопросы AI-аналитику:</div>', unsafe_allow_html=True)
+    for ins in insights:
+        st.markdown('<div class="apple-card-panel">', unsafe_allow_html=True)
+        
+        card_header = (
+            '<div style="display:flex;justify-content:space-between;align-items:center;">'
+            '<span class="apple-badge-crit">Высокий приоритет</span>'
+            f'<span style="font-size:0.82rem;color:#6B7280;">{ins["date"]} &nbsp;•&nbsp; Источник: <b>{ins["source"]}</b></span>'
+            '</div>'
+            f'<div class="apple-title-h2">{ins["title"]}</div>'
+        )
+        st.markdown(card_header, unsafe_allow_html=True)
 
-    col_q1, col_q2 = st.columns(2)
-    selected_preset = None
-    with col_q1:
-        if st.button("Рассчитать влияние на долговую нагрузку", key=f"q1_{ins['id']}"):
-            selected_preset = "Рассчитай влияние на долговую нагрузку компании"
-    with col_q2:
-        if st.button("Оценить риски цепочки контрагентов", key=f"q2_{ins['id']}"):
-            selected_preset = "Как это отразится на наших поставщиках и покупателях?"
+        b1, b2 = st.columns(2)
+        with b1:
+            st.caption("1. ЧТО ПРОИЗОШЛО")
+            b1_html = (
+                '<div class="apple-subbox">'
+                f'<div style="font-size:0.9rem;line-height:1.5;color:#374151;margin-bottom:12px;">{ins["facts"]}</div>'
+                f'<a href="{ins["source_url"]}" target="_blank" style="font-size:0.82rem;color:#0071E3;text-decoration:none;font-weight:600;">Официальный первоисточник релиза &rarr;</a>'
+                '</div>'
+            )
+            st.markdown(b1_html, unsafe_allow_html=True)
 
-    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+        with b2:
+            st.caption("2. ПОЧЕМУ ЭТО ВАЖНО ДЛЯ КОМПАНИИ")
+            pills = "".join([f'<span class="apple-tag-pill">{SVG["tag"]}{p}</span>' for p in ins["triggers"]])
+            b2_html = (
+                '<div class="apple-subbox">'
+                f'<div style="margin-bottom:8px;">{pills}</div>'
+                f'<div style="font-size:0.86rem;color:#4B5563;border-top:1px solid #E5E7EB;padding-top:8px;"><b>Влияние на цепочку контрагентов:</b> {ins["impact"]}</div>'
+                '</div>'
+            )
+            st.markdown(b2_html, unsafe_allow_html=True)
 
-    col_input, col_submit = st.columns([4.2, 1])
-    with col_input:
-        u_query = st.text_input("Вопрос", key=f"inp_{ins['id']}", placeholder="Спросите о ликвидности, кредитах или ВЭД...", label_visibility="collapsed")
-    with col_submit:
-        ask_clicked = st.button("Спросить", key=f"ask_{ins['id']}")
+        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-    if ask_clicked or selected_preset:
-        txt = selected_preset if selected_preset else u_query
-        if txt:
-            with st.spinner("AI-агент DeepSeek генерирует ответ..."):
-                ans = ask_ai_chat(current_company, selected_role_label, ins, txt)
-                st.session_state.chat_history[ins['id']] = {"q": txt, "a": ans}
+        st.caption("3. ПРОГНОЗ ПОСЛЕДСТВИЙ ДЛЯ БИЗНЕСА")
+        rc, oc = st.columns(2)
+        with rc:
+            st.markdown(f"<div style='font-size:0.88rem;font-weight:700;color:#DC2626;margin-bottom:6px;'>{SVG['shield']} Потенциальные риски</div>", unsafe_allow_html=True)
+            for r in ins["risks"]:
+                st.markdown(f'<div class="apple-risk-row">{r}</div>', unsafe_allow_html=True)
+        with oc:
+            st.markdown(f"<div style='font-size:0.88rem;font-weight:700;color:#16A34A;margin-bottom:6px;'>{SVG['trend']} Открывающиеся возможности</div>", unsafe_allow_html=True)
+            for o in ins["opps"]:
+                st.markdown(f'<div class="apple-opp-row">{SVG["check"]} {o}</div>', unsafe_allow_html=True)
 
-    if ins['id'] in st.session_state.chat_history:
-        h = st.session_state.chat_history[ins['id']]
-        st.markdown(f'<div class="chat-bubble-user"><b>Вы:</b> {h["q"]}</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="chat-bubble-ai">{h["a"]}</div>', unsafe_allow_html=True)
+        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)
+        st.caption("4. ОЦЕНКА АЛЬФА-БАНКА VS ВЫВОД ИИ")
+        mc, aic = st.columns(2)
+        with mc:
+            b_html = (
+                '<div class="apple-box-bank">'
+                f'<div style="font-weight:700;color:#0071E3;font-size:0.92rem;margin-bottom:6px;">{SVG["bank"]} Позиция аналитиков Альфа-Банка</div>'
+                f'<div style="font-size:0.9rem;font-style:italic;color:#1E293B;margin-bottom:10px;line-height:1.45;">«{ins["alfa_quote"]}»</div>'
+                f'<div style="font-size:0.78rem;color:#64748B;">Материал: <b>{ins["alfa_report"]}</b><br>Базовый прогноз: {ins["alfa_forecast"]}</div>'
+                '</div>'
+            )
+            st.markdown(b_html, unsafe_allow_html=True)
+        with aic:
+            ai_html = (
+                '<div class="apple-box-ai">'
+                f'<div style="font-weight:700;color:#EF3124;font-size:0.92rem;margin-bottom:6px;">{SVG["sparkles"]} Персонализированный AI-вывод для предприятия</div>'
+                f'<div style="font-size:0.9rem;color:#1E293B;margin-bottom:10px;line-height:1.45;">{ins["ai_prediction"]}</div>'
+                f'<div style="font-size:0.78rem;color:#991B1B;">Уверенность модели: <b>{ins["ai_conf"]}</b> &nbsp;•&nbsp; Драйвер: {ins["ai_driver"]}</div>'
+                '</div>'
+            )
+            st.markdown(ai_html, unsafe_allow_html=True)
 
-st.markdown("<center style='color:#9CA3AF;font-size:0.8rem;margin-top:24px;'>Интернет-банк «Альфа-Бизнес» &nbsp;•&nbsp; Сервис «Альфа-Инсайт»</center>", unsafe_allow_html=True)
+        st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
+
+        st.caption(f"5. РЕКОМЕНДУЕМЫЕ ДЕЙСТВИЯ ДЛЯ РОЛИ: {selected_role_label.upper()}")
+        for s_idx, act in enumerate(ins["actions"], 1):
+            st.checkbox(f"Шаг {s_idx}: {act}", key=f"step_{ins['id']}_{s_idx}")
+
+        pk = f"prod_{ins['id']}"
+        is_applied = pk in st.session_state.applied_products
+
+        st.markdown(f"""
+        <div class="product-unified-card">
+            <div style="font-size:0.75rem;font-weight:700;color:#EF3124;text-transform:uppercase;">
+                {ins["prod_badge"]}
+            </div>
+            <div style="font-size:1.1rem;font-weight:700;color:#111827;margin-top:4px;">
+                {ins["prod_title"]}
+            </div>
+            <div style="font-size:0.86rem;color:#4B5563;margin-top:4px;line-height:1.4;">
+                {ins["prod_desc"]}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+        
+        col_btn_left, col_btn_right = st.columns([1.5, 3])
+        with col_btn_left:
+            if is_applied:
+                st.markdown("<div style='color:#16A34A;font-weight:600;font-size:0.88rem;padding:8px 0;'>✓ Заявка передана банкиру</div>", unsafe_allow_html=True)
+            else:
+                if st.button(f"{ins['prod_btn']}", key=f"btn_{pk}"):
+                    st.session_state.applied_products.add(pk)
+                    st.balloons()
+                    st.rerun()
+
+        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+
+        with st.expander("Аудит-лог и происхождение выводов (Traceability)"):
+            st.caption("Пошаговый протокол рассуждения многошагового агента:")
+            for t in ins["trace"]:
+                st.markdown(f"• {t}")
+
+        st.markdown("<hr style='border:none;border-top:1px solid #E5E7EB;margin:22px 0;'>", unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.95rem;font-weight:700;color:#111827;margin-bottom:12px;">Уточняющие вопросы AI-аналитику:</div>', unsafe_allow_html=True)
+
+        col_q1, col_q2 = st.columns(2)
+        selected_preset = None
+        with col_q1:
+            if st.button("Рассчитать влияние на долговую нагрузку", key=f"q1_{ins['id']}"):
+                selected_preset = "Рассчитай влияние на долговую нагрузку компании"
+        with col_q2:
+            if st.button("Оценить риски цепочки контрагентов", key=f"q2_{ins['id']}"):
+                selected_preset = "Как это отразится на наших поставщиках и покупателях?"
+
+        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+
+        col_input, col_submit = st.columns([4.2, 1])
+        with col_input:
+            u_query = st.text_input("Вопрос", key=f"inp_{ins['id']}", placeholder="Спросите о ликвидности, кредитах или ВЭД...", label_visibility="collapsed")
+        with col_submit:
+            ask_clicked = st.button("Спросить", key=f"ask_{ins['id']}")
+
+        if ask_clicked or selected_preset:
+            txt = selected_preset if selected_preset else u_query
+            if txt:
+                with st.spinner("AI-агент DeepSeek анализирует финансовый контекст..."):
+                    ans = ask_ai_chat(current_company, selected_role_label, ins, txt)
+                    st.session_state.chat_history[ins['id']] = {"q": txt, "a": ans}
+
+        if ins['id'] in st.session_state.chat_history:
+            h = st.session_state.chat_history[ins['id']]
+            st.markdown(f'<div class="chat-bubble-user"><b>Вы:</b> {h["q"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="chat-bubble-ai">{h["a"]}</div>', unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("<center style='color:#9CA3AF;font-size:0.8rem;margin-top:24px;'>Интернет-банк «Альфа-Бизнес» &nbsp;•&nbsp; Сервис «Альфа-Инсайт»</center>", unsafe_allow_html=True)
