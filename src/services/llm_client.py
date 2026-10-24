@@ -58,6 +58,8 @@ class SafeLLMClient:
 
         # Счётчики режимов работы: live — ответ от модели, cached — из кэша, fallback — детерминированный синтез
         self.stats: Dict[str, int] = {"live": 0, "cached": 0, "fallback": 0}
+        self.last_error: str = ""
+        self.last_model: str = ""
 
         self.client: Optional[OpenAI] = None
         if self.api_key and self.api_key != "your_key_here":
@@ -65,7 +67,7 @@ class SafeLLMClient:
             self.client = OpenAI(
                 api_key=self.api_key,
                 base_url=self.base_url,
-                timeout=float(os.getenv("LLM_TIMEOUT", "20")),
+                timeout=float(os.getenv("LLM_TIMEOUT", "45")),
                 max_retries=0,
             )
 
@@ -120,7 +122,12 @@ class SafeLLMClient:
 
         if self.client is not None:
             candidates: List[str] = []
-            for m in (GATEWAY_SLUGS.get(model_tier), DEFAULT_GATEWAY_MODEL):
+            # сначала проверенная модель шлюза; модель «по регламенту» — второй попыткой.
+            # LLM_PREFER_TIER_MODELS=1 меняет порядок.
+            order = (GATEWAY_SLUGS.get(model_tier), DEFAULT_GATEWAY_MODEL)
+            if os.getenv("LLM_PREFER_TIER_MODELS") != "1":
+                order = order[::-1]
+            for m in order:
                 if m and m not in candidates:
                     candidates.append(m)
 
@@ -145,17 +152,22 @@ class SafeLLMClient:
                         data = _parse_json_loose(content)
                         self._save_cache(prompt_hash, model_name, json.dumps(data, ensure_ascii=False))
                         self.stats["live"] += 1
+                        self.last_model = gw_model
                         return data
                     except (APITimeoutError, APIConnectionError) as e:
                         print(f"[LLM Warning] Шлюз недоступен ({e}), переключаемся на детерминированный синтез.")
+                        self.last_error = f"{gw_model}: {type(e).__name__}"
                         network_down = True
                         break
                     except Exception as e:
                         print(f"[LLM Warning] {gw_model} (json_mode={use_json_mode}): {e}")
+                        self.last_error = f"{gw_model}: {str(e)[:160]}"
                         msg = str(e).lower()
                         if use_json_mode and ("response_format" in msg or "json" in msg):
                             continue  # шлюз не поддерживает JSON-режим — пробуем без него
                         break  # модель недоступна — пробуем следующую
 
         self.stats["fallback"] += 1
+        if self.client is None:
+            self.last_error = "ключ LLM_API_KEY не задан — клиент не создан"
         return fallback_dict or {}
