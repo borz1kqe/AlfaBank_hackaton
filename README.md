@@ -165,4 +165,4 @@ streamlit run app.py
 
 ## Лицензии и сторонние компоненты
 
-Перечень библиотек, моделей и шрифтов: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Перечень библиотек, моделей и шрифтов: [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
