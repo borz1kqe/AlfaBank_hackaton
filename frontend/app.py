@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»
-Live AI Multi-Model Router: Полные развернутые ответы без обрывов + Executive Persona
+Live AI Multi-Model Router: DeepSeek -> Qwen3.6 -> GLM-5.3
 """
 
 import streamlit as st
@@ -23,12 +23,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Официальные шлюзы хакатона
+# Ключи, модель и шлюзы из официальной инструкции хакатона
 LLM_API_KEY = st.secrets.get("LLM_API_KEY") if hasattr(st, "secrets") and "LLM_API_KEY" in st.secrets else os.getenv("LLM_API_KEY", "sk-ARm7HMnjyUUX-_sG3Qsicw")
+LLM_BASE_URL = (st.secrets.get("LLM_BASE_URL") if hasattr(st, "secrets") and "LLM_BASE_URL" in st.secrets else os.getenv("LLM_BASE_URL", "https://changellenge.up.railway.app/v1")).rstrip("/")
+LLM_MODEL = st.secrets.get("LLM_MODEL") if hasattr(st, "secrets") and "LLM_MODEL" in st.secrets else os.getenv("LLM_MODEL", "deepseek/deepseek-v4.1-flash")
+
 PRIMARY_URL = "https://changellenge.up.railway.app/v1"
 BACKUP_URL = "https://api.alfahack-gateway26.ru/v1"
 
 MODELS_QUEUE = [
+    LLM_MODEL,
     "deepseek/deepseek-v4.1-flash",
     "qwen/qwen3.6-35b-a3b",
     "z-ai/glm-5.3-flash"
@@ -59,7 +63,6 @@ st.markdown("""
 
     header, #MainMenu, footer { visibility: hidden; height: 0; }
 
-    /* Убираем служебные плашки Streamlit */
     [data-testid="stSidebarCollapseButton"],
     button[data-testid="stSidebarCollapseButton"],
     [data-testid="stSidebarHeader"],
@@ -411,7 +414,6 @@ INSIGHTS = {
     }]
 }
 
-# ВЫЗОВ МОДЕЛИ: 1200 ТОКЕНОВ (БЕЗ ОБРЫВА СЛОВ) + EXECUTIVE ПОВЕДЕНИЕ
 def call_live_llm(prompt: str, context: str) -> str:
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
@@ -458,12 +460,10 @@ def ask_ai_chat(company: dict, role: str, insight: dict, question: str) -> str:
         f"Позиция Альфа-Банка: {insight.get('alfa_quote')}"
     )
 
-    # Живой ответ DeepSeek / Qwen
     live_result = call_live_llm(question, ctx)
     if live_result:
         return live_result
 
-    # Запасной автономный расчет
     q_low = question.lower()
     if any(w in q_low for w in ["долг", "нагрузк", "ставк", "процент", "кредит"]):
         return (
