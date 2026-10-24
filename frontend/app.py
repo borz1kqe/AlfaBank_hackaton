@@ -570,6 +570,14 @@ st.markdown("""
     /* Пустая оболочка карточки создавала белый пустой блок */
     .apple-card-panel:empty { display: none !important; }
 
+    /* Индикатор «ИИ печатает» */
+    .typing-wrap { display: flex; align-items: center; gap: 10px; padding: 6px 2px; color: #6B7280; font-size: 0.85rem; }
+    .typing-dots { display: inline-flex; gap: 5px; }
+    .typing-dots span { width: 8px; height: 8px; border-radius: 50%; background: #EF3124; opacity: 0.25; animation: alfa-typing 1.2s infinite ease-in-out; }
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes alfa-typing { 0%, 80%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-4px); } }
+
     /* Калькулятор свопа и кнопка PDF */
     .swap-box { border-radius: 14px; padding: 14px 16px; border: 1px solid #E5E7EB; background: #F9FAFB; height: 100%; }
     .swap-box.before { border-left: 4px solid #9CA3AF; }
@@ -1439,7 +1447,23 @@ else:
             if pending_q:
                 st.markdown(f'<div class="chat-bubble-user"><b>Вы:</b> {pending_q}</div>', unsafe_allow_html=True)
                 with st.container(border=True):
-                    ans = st.write_stream(ask_ai_stream(current_company, selected_role_label, ins, pending_q, history))
+                    typing_ph = st.empty()
+                    typing_ph.markdown(
+                        '<div class="typing-wrap"><div class="typing-dots"><span></span><span></span><span></span></div>'
+                        'AI-аналитик печатает…</div>', unsafe_allow_html=True)
+
+                    def _until_first_token(gen, ph=typing_ph):
+                        first = True
+                        for chunk in gen:
+                            if first:
+                                ph.empty()
+                                first = False
+                            yield chunk
+                        if first:
+                            ph.empty()
+
+                    ans = st.write_stream(_until_first_token(
+                        ask_ai_stream(current_company, selected_role_label, ins, pending_q, history)))
                 history.append({"q": pending_q, "a": ans})
                 if not selected_preset:
                     st.session_state[f"clear_{ins['id']}"] = True
