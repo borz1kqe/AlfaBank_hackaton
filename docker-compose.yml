@@ -10,7 +10,9 @@ services:
       - "8000:8000"
     environment:
       - LLM_API_KEY=${LLM_API_KEY:-}
-      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://changellenge.up.railway.app/v1}
+      - LLM_BACKUP_URL=${LLM_BACKUP_URL:-https://api.alfahack-gateway26.ru/v1}
+      - LLM_MODEL=${LLM_MODEL:-deepseek/deepseek-v4.1-flash}
     volumes:
       - ./data:/app/data
 
@@ -23,5 +25,7 @@ services:
     environment:
       - API_BASE_URL=http://backend:8000
       - BACKEND_URL=http://backend:8000
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://changellenge.up.railway.app/v1}
     depends_on:
       - backend
