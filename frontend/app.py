@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»
-Live AI Multi-Model Router: DeepSeek -> Qwen3.6 -> GLM-5.3
+Дизайн: Apple Executive Design System (SF Symbols, монохромный вектор, идеальная сетка)
 """
 
 import streamlit as st
@@ -23,7 +23,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Ключи, модель и шлюзы из официальной инструкции хакатона
+# Официальные шлюзы хакатона и модель
 LLM_API_KEY = st.secrets.get("LLM_API_KEY") if hasattr(st, "secrets") and "LLM_API_KEY" in st.secrets else os.getenv("LLM_API_KEY", "sk-ARm7HMnjyUUX-_sG3Qsicw")
 LLM_BASE_URL = (st.secrets.get("LLM_BASE_URL") if hasattr(st, "secrets") and "LLM_BASE_URL" in st.secrets else os.getenv("LLM_BASE_URL", "https://changellenge.up.railway.app/v1")).rstrip("/")
 LLM_MODEL = st.secrets.get("LLM_MODEL") if hasattr(st, "secrets") and "LLM_MODEL" in st.secrets else os.getenv("LLM_MODEL", "deepseek/deepseek-v4.1-flash")
@@ -57,12 +57,14 @@ def get_logo_html() -> str:
                 pass
     return '<span style="background:#EF3124;color:#FFFFFF;padding:4px 10px;border-radius:6px;font-weight:900;font-size:0.9rem;margin-right:10px;">А</span>'
 
+# ПРЕМИАЛЬНАЯ ДИЗАЙН-СИСТЕМА APPLE FINTECH
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
     header, #MainMenu, footer { visibility: hidden; height: 0; }
 
+    /* Убираем баги и плашки Streamlit */
     [data-testid="stSidebarCollapseButton"],
     button[data-testid="stSidebarCollapseButton"],
     [data-testid="stSidebarHeader"],
@@ -73,12 +75,13 @@ st.markdown("""
         height: 0 !important;
     }
 
+    /* 1. ЛЕВАЯ ШТОРКА (ГРАФИТОВО-ЧЕРНЫЙ TITANIUM) */
     [data-testid="stSidebar"] {
         background-color: #111827 !important;
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
     [data-testid="stSidebar"] .block-container {
-        padding: 1.5rem 1.2rem !important;
+        padding: 1.6rem 1.2rem !important;
     }
     [data-testid="stSidebar"] div, [data-testid="stSidebar"] p, [data-testid="stSidebar"] span {
         color: #F9FAFB;
@@ -99,14 +102,20 @@ st.markdown("""
     }
     [data-testid="stSidebar"] div[data-baseweb="select"] svg { fill: #9CA3AF !important; }
 
+    /* Радио-кнопки меню в шторке */
     [data-testid="stSidebar"] div[data-testid="stRadio"] label {
         background-color: transparent !important;
-        padding: 10px 14px !important;
+        padding: 11px 14px !important;
         border-radius: 10px !important;
         color: #9CA3AF !important;
         font-size: 0.88rem !important;
         font-weight: 500 !important;
         cursor: pointer !important;
+        transition: all 0.15s ease !important;
+    }
+    [data-testid="stSidebar"] div[data-testid="stRadio"] label:hover {
+        background-color: rgba(255, 255, 255, 0.04) !important;
+        color: #FFFFFF !important;
     }
     [data-testid="stSidebar"] div[data-testid="stRadio"] label:has(input:checked) {
         background: rgba(239, 49, 36, 0.12) !important;
@@ -117,6 +126,7 @@ st.markdown("""
     }
     [data-testid="stSidebar"] div[data-testid="stRadio"] input { display: none !important; }
 
+    /* 2. ОСНОВНОЙ ЭКРАН (APPLE CANVAS) */
     [data-testid="stAppViewContainer"], .stApp {
         background-color: #F5F5F7 !important;
         color: #111827 !important;
@@ -237,15 +247,19 @@ st.markdown("""
         padding: 18px 22px;
         height: 100%;
     }
-    .product-unified-card {
-        background: #F9FAFB;
+
+    /* БАНКОВСКИЙ ПРОДУКТ: ЭЛЕГАНТНАЯ СВЕТЛАЯ КАРТОЧКА */
+    .product-apple-card {
+        background: #FFFFFF;
         border: 1px solid #E5E7EB;
         border-left: 4px solid #EF3124;
-        border-radius: 14px;
-        padding: 18px 22px;
+        border-radius: 16px;
+        padding: 20px 24px;
         margin-top: 16px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
     }
 
+    /* APPLE ЧИПЫ ДЛЯ КНОПОК ВОПРОСОВ В ЧАТЕ */
     div.stButton > button {
         background-color: #FFFFFF !important;
         color: #374151 !important;
@@ -256,6 +270,7 @@ st.markdown("""
         padding: 8px 18px !important;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
         width: 100% !important;
+        transition: all 0.15s ease !important;
     }
     div.stButton > button:hover {
         background-color: #F3F4F6 !important;
@@ -292,13 +307,18 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ЮВЕЛИРНЫЕ МОНОХРОМНЫЕ SVG-ИКОНКИ (1.8px STROKE)
 SVG = {
-    "shield": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
-    "trend": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>',
-    "bank": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0071E3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><rect width="20" height="4" x="2" y="3" rx="1"/><path d="M4 7v11"/><path d="M8 7v11"/><path d="M12 7v11"/><path d="M16 7v11"/><path d="M20 7v11"/><rect width="20" height="3" x="2" y="18" rx="1"/></svg>',
-    "sparkles": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF3124" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z"/></svg>',
-    "tag": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M12 2H2v10l9.29 9.29a2.41 2.41 0 0 0 3.42 0l6.58-6.58a2.41 2.41 0 0 0 0-3.42L12 2Z"/><circle cx="7" cy="7" r="1.5"/></svg>',
-    "check": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>'
+    "lightning": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#EF3124" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:8px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+    "shield": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+    "trend": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>',
+    "bank": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0071E3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><rect width="20" height="4" x="2" y="3" rx="1"/><path d="M4 7v11"/><path d="M8 7v11"/><path d="M12 7v11"/><path d="M16 7v11"/><path d="M20 7v11"/><rect width="20" height="3" x="2" y="18" rx="1"/></svg>',
+    "sparkles": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF3124" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>',
+    "tag": '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M12 2H2v10l9.29 9.29a2.41 2.41 0 0 0 3.42 0l6.58-6.58a2.41 2.41 0 0 0 0-3.42L12 2Z"/><circle cx="7" cy="7" r="1.5"/></svg>',
+    "check": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>',
+    "briefcase": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#EF3124" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
+    "chart": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+    "truck": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>'
 }
 
 COMPANIES = [
@@ -510,7 +530,7 @@ with st.sidebar:
     st.caption("РАЗДЕЛЫ БАНКА")
     active_section = st.radio(
         "Навигация",
-        options=["⚡ Альфа-Инсайт", "Счета и выписки", "Кредитные линии", "ВЭД и валюта"],
+        options=["Альфа-Инсайт", "Счета и выписки", "Кредитные линии", "ВЭД и валюта"],
         index=0,
         label_visibility="collapsed"
     )
@@ -585,7 +605,7 @@ else:
     entry_html = (
         '<div class="apple-hero-banner">'
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
-        '<div style="font-size:1.15rem;font-weight:700;color:#111827;">Альфа-Инсайт: Персонализированная аналитика рисков и возможностей</div>'
+        f'<div style="font-size:1.15rem;font-weight:700;color:#111827;display:flex;align-items:center;">{SVG["sparkles"]} Альфа-Инсайт: Персонализированная аналитика рисков и возможностей</div>'
         f'<span class="apple-badge-crit">Событий в фокусе: {len(insights)}</span>'
         '</div>'
         f'<div style="color:#4B5563;font-size:0.9rem;line-height:1.5;">Мультиагентный сервис сопоставил публикации рынка и макро-отчеты Альфа-Банка. Сформирован стратегический фокус для роли <b>{selected_role_label}</b>.</div>'
@@ -669,15 +689,19 @@ else:
         for s_idx, act in enumerate(ins["actions"], 1):
             st.checkbox(f"Шаг {s_idx}: {act}", key=f"step_{ins['id']}_{s_idx}")
 
+        # БАНКОВСКИЙ ПРОДУКТ: ЭЛЕГАНТНАЯ СВЕТЛАЯ КАРТОЧКА
         pk = f"prod_{ins['id']}"
         is_applied = pk in st.session_state.applied_products
 
         st.markdown(f"""
-        <div class="product-unified-card">
-            <div style="font-size:0.75rem;font-weight:700;color:#EF3124;text-transform:uppercase;">
-                {ins["prod_badge"]}
+        <div class="product-apple-card">
+            <div style="display:flex;align-items:center;gap:6px;">
+                {SVG['briefcase']}
+                <span style="font-size:0.75rem;font-weight:700;color:#EF3124;text-transform:uppercase;">
+                    {ins["prod_badge"]}
+                </span>
             </div>
-            <div style="font-size:1.1rem;font-weight:700;color:#111827;margin-top:4px;">
+            <div style="font-size:1.1rem;font-weight:700;color:#111827;margin-top:6px;">
                 {ins["prod_title"]}
             </div>
             <div style="font-size:0.86rem;color:#4B5563;margin-top:4px;line-height:1.4;">
@@ -705,16 +729,17 @@ else:
             for t in ins["trace"]:
                 st.markdown(f"• {t}")
 
+        # ЧАТ С АГЕНТОМ
         st.markdown("<hr style='border:none;border-top:1px solid #E5E7EB;margin:22px 0;'>", unsafe_allow_html=True)
         st.markdown('<div style="font-size:0.95rem;font-weight:700;color:#111827;margin-bottom:12px;">Уточняющие вопросы AI-аналитику:</div>', unsafe_allow_html=True)
 
         col_q1, col_q2 = st.columns(2)
         selected_preset = None
         with col_q1:
-            if st.button("Рассчитать влияние на долговую нагрузку", key=f"q1_{ins['id']}"):
+            if st.button(f"Рассчитать влияние на долговую нагрузку", key=f"q1_{ins['id']}"):
                 selected_preset = "Рассчитай влияние на долговую нагрузку компании"
         with col_q2:
-            if st.button("Оценить риски цепочки контрагентов", key=f"q2_{ins['id']}"):
+            if st.button(f"Оценить риски цепочки контрагентов", key=f"q2_{ins['id']}"):
                 selected_preset = "Как это отразится на наших поставщиках и покупателях?"
 
         st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
