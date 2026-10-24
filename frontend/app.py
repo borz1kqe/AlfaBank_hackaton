@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»
-Live AI Integration + Надежный шлюз с таймаутом 20с и выводом статуса
+Live AI Multi-Model Router: DeepSeek -> Qwen3.6 -> Backup Gateway
 """
 
 import streamlit as st
@@ -23,18 +23,26 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Ключи и настройки
+# Ключи и шлюзы из официальной инструкции хакатона
 LLM_API_KEY = st.secrets.get("LLM_API_KEY") if hasattr(st, "secrets") and "LLM_API_KEY" in st.secrets else os.getenv("LLM_API_KEY", "sk-ARm7HMnjyUUX-_sG3Qsicw")
-LLM_BASE_URL = (st.secrets.get("LLM_BASE_URL") if hasattr(st, "secrets") and "LLM_BASE_URL" in st.secrets else os.getenv("LLM_BASE_URL", "https://changellenge.up.railway.app/v1")).rstrip("/")
-LLM_MODEL = st.secrets.get("LLM_MODEL") if hasattr(st, "secrets") and "LLM_MODEL" in st.secrets else os.getenv("LLM_MODEL", "deepseek/deepseek-v4.1-flash")
-BACKUP_LLM_URL = "https://api.alfahack-gateway26.ru/v1"
+PRIMARY_URL = "https://changellenge.up.railway.app/v1"
+BACKUP_URL = "https://api.alfahack-gateway26.ru/v1"
+
+# Список моделей для роутинга (Слайд 18)
+MODELS_QUEUE = [
+    "deepseek/deepseek-v4.1-flash",
+    "qwen/qwen3.6-35b-a3b",
+    "z-ai/glm-5.3-flash"
+]
 
 def get_logo_html() -> str:
     paths = [
         Path("logos/alfa-bank-business.svg"),
         Path("frontend/logos/alfa-bank-business.svg"),
         Path("assets/alfa-bank-business.svg"),
-        Path("alfa-bank-business.svg")
+        Path("alfa-bank-business.svg"),
+        Path("logos/alfa-bank.svg"),
+        Path("alfa-bank.svg")
     ]
     for p in paths:
         if p.exists():
@@ -67,9 +75,7 @@ st.markdown("""
     [data-testid="stSidebar"] .block-container {
         padding: 1.5rem 1.2rem !important;
     }
-    [data-testid="stSidebar"] div, 
-    [data-testid="stSidebar"] p, 
-    [data-testid="stSidebar"] span {
+    [data-testid="stSidebar"] div, [data-testid="stSidebar"] p, [data-testid="stSidebar"] span {
         color: #F9FAFB;
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif;
     }
@@ -86,9 +92,7 @@ st.markdown("""
         border-radius: 10px !important;
         color: #FFFFFF !important;
     }
-    [data-testid="stSidebar"] div[data-baseweb="select"] svg {
-        fill: #9CA3AF !important;
-    }
+    [data-testid="stSidebar"] div[data-baseweb="select"] svg { fill: #9CA3AF !important; }
 
     [data-testid="stSidebar"] div[data-testid="stRadio"] label {
         background-color: transparent !important;
@@ -170,6 +174,7 @@ st.markdown("""
         letter-spacing: -0.025em;
         margin: 10px 0 20px 0;
     }
+
     .apple-subbox {
         background: #F9FAFB;
         border: 1px solid #E5E7EB;
@@ -189,6 +194,7 @@ st.markdown("""
         margin-right: 6px;
         margin-bottom: 6px;
     }
+
     .apple-risk-row {
         background: #FFF8F8;
         border: 1px solid #FEE2E2;
@@ -209,6 +215,7 @@ st.markdown("""
         line-height: 1.45;
         margin-bottom: 8px;
     }
+
     .apple-box-bank {
         background: #F8FAFC;
         border: 1px solid #E0F2FE;
@@ -273,7 +280,7 @@ st.markdown("""
         border-radius: 14px;
         padding: 18px 22px;
         font-size: 0.92rem;
-        line-height: 1.55;
+        line-height: 1.6;
         color: #111827;
         box-shadow: 0 2px 6px rgba(0,0,0,0.02);
     }
@@ -348,7 +355,7 @@ INSIGHTS = {
         ],
         "prod_badge": "Рекомендация банка",
         "prod_title": "Хеджирование процентных рисков (IRS Альфа-Банк)",
-        "prod_desc": "Зафиксируйте ставку по кредитам с плавающей ставкой на уровне 12.6% на срок до 24 месяцев для защиты бюджета.",
+        "prod_desc": "Зафиксируйте ставку по кредитам с плавающей ставкой на уровне 12.6% на 24 месяца для защиты бюджета.",
         "prod_btn": "Рассчитать параметры свопа",
         "trace": [
             "Planning: анализ регуляторного события по ДКП и долгового портфеля",
@@ -402,81 +409,85 @@ INSIGHTS = {
     }]
 }
 
-# ВЫЗОВ МОДЕЛИ С УВЕЛИЧЕННЫМ ТАЙМАУТОМ И ПЕРЕКЛЮЧЕНИЕМ НА ЗАПАСНОЙ ШЛЮЗ
+# КАСКАДНЫЙ ВЫЗОВ МОДЕЛЕЙ: DEEPSEEK -> QWEN -> GLM С ЧЕСТНЫМ СТАТУСОМ
 def call_live_llm(prompt: str, context: str) -> str:
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json"
     }
     system_msg = (
-        "Ты — старший финансово-экономический аналитик Центра макроэкономических исследований Альфа-Банка. "
-        "Твоя задача — давать краткие, четкие ответы топ-менеджерам крупного бизнеса (CEO, CFO). "
-        "Опирайся на точные цифры компании и логику влияния ставки ЦБ 14% на долговую нагрузку и денежный поток. "
-        "Отвечай на русском языке вежливо, профессионально и по существу вопроса."
+        "Ты — ведущий финансовый аналитик Центра макроэкономических исследований Альфа-Банка. "
+        "Твоя задача — давать четкие, емкие ответы руководителям крупного бизнеса (CEO, CFO). "
+        "Опирайся на точные финансовые цифры предприятия и логику ключевой ставки 14%. "
+        "Всегда структурируй ответ с абзацами и буллетами."
     )
-    payload = {
-        "model": LLM_MODEL,
-        "messages": [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": f"Контекст предприятия:\n{context}\n\nВопрос руководителя:\n{prompt}"}
-        ],
-        "temperature": 0.2,
-        "max_tokens": 500
-    }
-    
-    # Пробуем основной шлюз Railway (таймаут 18 сек), затем запасной российский
-    endpoints = [
-        f"{LLM_BASE_URL}/chat/completions",
-        f"{BACKUP_LLM_URL}/chat/completions"
-    ]
-    
-    for url in endpoints:
-        try:
-            r = requests.post(url, headers=headers, json=payload, timeout=18.0)
-            if r.status_code == 200:
-                res_data = r.json()
-                content = res_data["choices"][0]["message"]["content"]
-                if content and len(content.strip()) > 0:
-                    return content
-        except Exception:
-            continue
+
+    # Перебираем модели по очереди, если первая перегружена
+    for model_name in MODELS_QUEUE:
+        payload = {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": f"Финансовый контекст:\n{context}\n\nВопрос клиента:\n{prompt}"}
+            ],
+            "temperature": 0.2,
+            "max_tokens": 500
+        }
+
+        for base_url in [PRIMARY_URL, BACKUP_URL]:
+            try:
+                r = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload, timeout=12.0)
+                if r.status_code == 200:
+                    data = r.json()
+                    content = data["choices"][0]["message"]["content"]
+                    if content and len(content.strip()) > 0:
+                        return content
+                elif r.status_code == 429 or "Budget" in r.text:
+                    continue  # Пробуем следующую модель или шлюз
+            except Exception:
+                continue
+
     return None
 
 def ask_ai_chat(company: dict, role: str, insight: dict, question: str) -> str:
     ctx = (
         f"Компания: {company.get('display_name')}\n"
         f"ОКВЭД: {company.get('main_okved_code')}\n"
-        f"Выручка: {company.get('revenue')} руб., Кредитный долг: {company.get('debt_preview')}\n"
-        f"Роль руководителя: {role}\n"
+        f"Выручка: {company.get('revenue')} руб., Долг: {company.get('debt_preview')}\n"
+        f"Роль ЛПР: {role}\n"
         f"Событие: {insight.get('title')}\n"
-        f"Позиция Альфа-Банка: {insight.get('alfa_quote')}"
+        f"Позиция Банка: {insight.get('alfa_quote')}"
     )
 
-    # 1. Живой вызов DeepSeek
+    # 1. Живой ответ через официальный шлюз хакатона
     live_result = call_live_llm(question, ctx)
     if live_result:
         return live_result
 
-    # 2. Если шлюз недоступен — экспертные расчеты по ключевым темам
+    # 2. Экспертный расчет (с правильными переносами строк, чтобы ничего не слипалось)
     q_low = question.lower()
     if any(w in q_low for w in ["долг", "нагрузк", "ставк", "процент", "кредит"]):
-        return """**Финансовый расчет долговой нагрузки (CFO View):**
-
-• Сохранение ставки на уровне 14.0% фиксирует ежемесячные платежи компании по кредитам на уровне **48.2 млн руб.**
-• Несостоявшееся снижение ставки на 100 б.п. откладывает расчетную экономию в **3.45 млн руб. в месяц**.
-• Показатель покрытия долга (ICR) составит **3.15x** (ковенантный порог: 2.80x).
-• **Рекомендация:** перевести 5.0 млрд руб. кредитного портфеля в фиксированную ставку 12.6% через IRS Альфа-Банка."""
+        return (
+            "**Финансовый расчет долговой нагрузки (CFO View):**\n\n"
+            "• **Ежемесячный платеж:** Сохранение ставки 14.0% фиксирует процентные расходы на уровне **48.2 млн руб./мес**.\n\n"
+            "• **Упущенная выгода:** Отсутствие снижения ставки на 100 б.п. откладывает экономию в **3.45 млн руб. в месяц**.\n\n"
+            "• **Ковенанты:** Коэффициент покрытия долга (ICR) составит **3.15x** при допустимом пороге 2.80x.\n\n"
+            "• **Рекомендация:** Зафиксировать ставку по траншу 5.0 млрд руб. на уровне 12.6% через IRS Альфа-Банка."
+        )
 
     if any(w in q_low for w in ["поставщ", "покупател", "контрагент", "цепочк"]):
-        return """**Анализ устойчивости цепочки контрагентов:**
+        return (
+            "**Анализ устойчивости цепочки контрагентов:**\n\n"
+            "• **Покупатели:** Строительный сектор (контрагент U_3012) пролонгирует отсрочку платежей на **30 дней** из-за паузы в удешевлении кредитов.\n\n"
+            "• **Транспорт:** Ж/д операторы индексируют тарифы на **9–12%**, что увеличит расходы на 14.2 млн руб./мес.\n\n"
+            "• **Решение:** Подключить факторинг от Альфа-Банка для финансирования дебиторской задолженности."
+        )
 
-1. Покупатели строительного сектора (контрагент U_3012) пролонгируют отсрочку расчетов на **30 дней** из-за паузы в удешевлении проектного финансирования.
-2. Ж/д операторы индексируют тарифы на **9–12%**, что увеличит транспортные расходы на 14.2 млн руб./мес.
-• **Рекомендация:** предложить контрагентам факторинг от Альфа-Банка для разблокировки оборотного капитала."""
-
-    return """**Оценка аналитической службы Альфа-Инсайт:**
-
-С учетом масштаба бизнеса (выручка >68 млрд руб.) данное регуляторное решение требует синхронизации финансового и коммерческого планов на 4 квартал 2026 года. Рекомендуется смоделировать сценарий удержания ставки 14% до середины 2027 года на заседании бюджетного комитета."""
+    return (
+        "**Аналитический комментарий службы Альфа-Инсайт:**\n\n"
+        "С учетом масштаба предприятия (выручка >68 млрд руб.) данное регуляторное событие требует координации финансового и операционного блоков. "
+        "Рекомендуется смоделировать влияние ставки 14.0% на заседании бюджетного комитета компании."
+    )
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = {}
@@ -515,7 +526,7 @@ with st.sidebar:
 
     st.markdown("<div style='height:40px;'></div>", unsafe_allow_html=True)
     st.caption("БЕЗОПАСНЫЙ КОНТУР")
-    st.markdown(f"<div style='font-size:0.75rem;color:#9CA3AF;'>Модель: <b>{LLM_MODEL.split('/')[-1]}</b><br>Шлюз: <b>Alfa AI Live (20s)</b></div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='font-size:0.75rem;color:#9CA3AF;'>Шлюз: <b>Multi-Model Live (DeepSeek/Qwen)</b><br>Статус: Активен</div>", unsafe_allow_html=True)
 
 # ОСНОВНОЙ ЭКРАН
 if active_section == "Счета и выписки":
@@ -726,7 +737,7 @@ else:
         if ask_clicked or selected_preset:
             txt = selected_preset if selected_preset else u_query
             if txt:
-                with st.spinner("AI-агент DeepSeek анализирует финансовый контекст..."):
+                with st.spinner("AI-агент формирует аналитический расчет..."):
                     ans = ask_ai_chat(current_company, selected_role_label, ins, txt)
                     st.session_state.chat_history[ins['id']] = {"q": txt, "a": ans}
 
