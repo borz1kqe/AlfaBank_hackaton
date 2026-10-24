@@ -5,6 +5,7 @@ Live AI Multi-Model Router: Контрастная кнопка шторки, Co
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import os
 import sys
@@ -72,7 +73,9 @@ st.markdown("""
         overflow: visible !important;
     }
     /* правый тулбар Streamlit скрываем, кнопки шторки остаются видимыми */
-    [data-testid="stToolbar"] { visibility: hidden !important; }
+    [data-testid="stToolbarActions"],
+    [data-testid="stAppDeployButton"],
+    [data-testid="stMainMenu"] { display: none !important; }
 
     /* КНОПКА ОТКРЫТИЯ ШТОРКИ: яркая, с подписью, всегда поверх контента */
     [data-testid="stSidebarCollapsedControl"],
@@ -813,6 +816,51 @@ with st.sidebar:
     st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
     st.caption("БЕЗОПАСНЫЙ КОНТУР")
     st.markdown(f"<div style='font-size:0.75rem;color:#9CA3AF;'>Модель: <b>{LLM_MODEL.split('/')[-1]}</b><br>Лимит: <b>1800 токенов (Safe)</b></div>", unsafe_allow_html=True)
+
+# ЗАПАСНАЯ КНОПКА ОТКРЫТИЯ ШТОРКИ (появляется, только когда шторка свёрнута)
+_SIDEBAR_BTN_JS = """
+<script>
+(function () {
+  var doc;
+  try { doc = window.parent.document; } catch (e) { return; }
+  var old = doc.getElementById('alfa-open-sidebar');
+  if (old) old.remove();
+
+  var btn = doc.createElement('button');
+  btn.id = 'alfa-open-sidebar';
+  btn.type = 'button';
+  btn.innerHTML = '<span style="font-size:18px;line-height:1;">&#9776;</span><span>Меню банка</span>';
+  btn.style.cssText = [
+    'position:fixed', 'top:12px', 'left:14px', 'z-index:2147483000',
+    'display:none', 'align-items:center', 'gap:8px',
+    'height:44px', 'padding:0 18px', 'border:none', 'border-radius:14px',
+    'cursor:pointer', 'color:#fff', 'font-size:14px', 'font-weight:700',
+    'font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Inter,Arial,sans-serif',
+    'background:linear-gradient(180deg,#FF4B3E 0%,#EF3124 55%,#D3281C 100%)',
+    'box-shadow:0 8px 22px rgba(239,49,36,.38),0 0 0 4px rgba(239,49,36,.14)'
+  ].join(';');
+
+  btn.addEventListener('click', function () {
+    var el = doc.querySelector('[data-testid="stExpandSidebarButton"]')
+          || doc.querySelector('[data-testid="stSidebarCollapsedControl"] button')
+          || doc.querySelector('[data-testid="collapsedControl"] button');
+    if (el) { el.click(); }
+  });
+  doc.body.appendChild(btn);
+
+  function refresh() {
+    var sb = doc.querySelector('[data-testid="stSidebar"]');
+    var collapsed = !sb || sb.getAttribute('aria-expanded') === 'false';
+    btn.style.display = collapsed ? 'inline-flex' : 'none';
+  }
+  refresh();
+  setInterval(refresh, 300);
+})();
+</script>
+"""
+
+with st.sidebar:
+    components.html(_SIDEBAR_BTN_JS, height=0)
 
 # ОСНОВНОЙ ЭКРАН
 if active_section == "Счета и выписки":
