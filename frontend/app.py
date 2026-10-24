@@ -47,7 +47,7 @@ def _secret(name: str, default: str = "") -> str:
         pass
     return os.getenv(name, default)
 
-LLM_API_KEY = _secret("LLM_API_KEY", "sk-ARm7HMnjyUUX-_sG3Qsicw")
+LLM_API_KEY = _secret("LLM_API_KEY", "")
 LLM_BASE_URL = _secret("LLM_BASE_URL", "https://changellenge.up.railway.app/v1").rstrip("/")
 LLM_MODEL = _secret("LLM_MODEL", "deepseek/deepseek-v4.1-flash")
 # бэкенд (src/*) читает настройки из окружения
@@ -669,7 +669,7 @@ INSIGHTS = {
         "title": "Банк России сохранил ключевую ставку на уровне 14,0%: пауза в цикле смягчения",
         "date": "11 сентября 2026, 13:30",
         "source": "Банк России / Интерфакс",
-        "source_url": "https://cbr.ru/press/",
+        "source_url": "https://cbr.ru/press/event/?id=32832",
         "facts": "Совет директоров Банка России 11 сентября 2026 года принял решение сохранить ключевую ставку на уровне 14,00% годовых. Это первая пауза после десяти последовательных снижений ставки с июня 2025 года.",
         "triggers": [
             "ОКВЭД 24.10: Высокая зависимость от стоимости обслуживания долга",
@@ -822,7 +822,7 @@ def _build_feed(company_id: str, role_code: str) -> dict:
         ok = (after.get("live", 0) - before.get("live", 0)) + (after.get("cached", 0) - before.get("cached", 0))
         bad = after.get("fallback", 0) - before.get("fallback", 0)
         mode = "live" if (bad == 0 and ok > 0) else ("mixed" if ok > 0 else "deterministic")
-        return {"mode": mode, "insights": [_adapt_insight(r.model_dump(), focus) for r in results], "error": ""}
+        return {"mode": mode, "insights": [_adapt_insight(r.model_dump(), focus) for r in results], "error": (getattr(llm, "last_error", "") if mode != "live" else "")}
     except Exception as e:
         return {"mode": "offline", "insights": fallback, "error": f"{type(e).__name__}: {e}"}
 
@@ -1259,6 +1259,9 @@ with st.sidebar:
                 "последняя модель": getattr(_llm, "last_model", ""),
                 "последняя ошибка": getattr(_llm, "last_error", ""),
             })
+            if hasattr(_llm, "ping"):
+                if st.button("Проверить шлюз", key="ping_llm"):
+                    st.write(_llm.ping())
         else:
             st.write({"бэкенд": BACKEND_ERR})
 
@@ -1535,86 +1538,94 @@ else:
             if ins.get("models"):
                 st.caption("Модели (по регламенту): " + ", ".join(ins["models"]))
 
-        st.markdown("<hr style='border:none;border-top:1px solid #E5E7EB;margin:20px 0;'>", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        # Переписка выводится над полем ввода; контейнер наполняется после обработки вопроса
-        hist_box = st.container()
+    st.markdown("<hr style='border:none;border-top:1px solid #E5E7EB;margin:20px 0;'>", unsafe_allow_html=True)
+    st.markdown('<div style="font-size:1.05rem;font-weight:700;color:#111827;margin-bottom:6px;">Чат с AI-аналитиком</div>', unsafe_allow_html=True)
+    _titles = {i_['id']: i_['title'] for i_ in insights}
+    if st.session_state.get("chat_ins_select") not in _titles:
+        st.session_state.pop("chat_ins_select", None)  # лента сменилась (роль/клиент) — сбросить выбор
+    _chat_id = st.selectbox("Событие для обсуждения", options=list(_titles),
+                            format_func=lambda k: _titles[k], key="chat_ins_select")
+    ins = next(i_ for i_ in insights if i_['id'] == _chat_id)
 
-        st.markdown('<div style="font-size:0.92rem;font-weight:700;color:#111827;margin-bottom:10px;">Уточняющие вопросы AI-аналитику:</div>', unsafe_allow_html=True)
+    # Переписка выводится над полем ввода; контейнер наполняется после обработки вопроса
+    hist_box = st.container()
 
-        col_q1, col_q2 = st.columns(2)
-        selected_preset = None
-        with col_q1:
-            if st.button("Рассчитать влияние на долговую нагрузку", key=f"q1_{ins['id']}"):
-                selected_preset = "Рассчитай влияние на долговую нагрузку компании"
-        with col_q2:
-            if st.button("Оценить риски цепочки контрагентов", key=f"q2_{ins['id']}"):
-                selected_preset = "Как это отразится на наших поставщиках и покупателях?"
+    st.markdown('<div style="font-size:0.92rem;font-weight:700;color:#111827;margin-bottom:10px;">Уточняющие вопросы AI-аналитику:</div>', unsafe_allow_html=True)
 
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    col_q1, col_q2 = st.columns(2)
+    selected_preset = None
+    with col_q1:
+        if st.button("Рассчитать влияние на долговую нагрузку", key=f"q1_{ins['id']}"):
+            selected_preset = "Рассчитай влияние на долговую нагрузку компании"
+    with col_q2:
+        if st.button("Оценить риски цепочки контрагентов", key=f"q2_{ins['id']}"):
+            selected_preset = "Как это отразится на наших поставщиках и покупателях?"
 
-        inp_key = f"inp_{ins['id']}"
-        send_key = f"send_{ins['id']}"
-        # очистка поля после отправки (должна произойти до создания виджета)
-        if st.session_state.pop(f"clear_{ins['id']}", False):
-            st.session_state[inp_key] = ""
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
 
-        def _on_enter(k=send_key):
-            st.session_state[k] = True
+    inp_key = f"inp_{ins['id']}"
+    send_key = f"send_{ins['id']}"
+    # очистка поля после отправки (должна произойти до создания виджета)
+    if st.session_state.pop(f"clear_{ins['id']}", False):
+        st.session_state[inp_key] = ""
 
-        col_input, col_submit = st.columns([4.2, 1])
-        with col_input:
-            u_query = st.text_input("Вопрос", key=inp_key, placeholder="Задайте следующий вопрос: о ликвидности, кредитах или ВЭД...", label_visibility="collapsed", on_change=_on_enter)
-        with col_submit:
-            ask_clicked = st.button("Спросить", key=f"ask_{ins['id']}")
+    def _on_enter(k=send_key):
+        st.session_state[k] = True
 
-        enter_pressed = st.session_state.pop(send_key, False)
+    col_input, col_submit = st.columns([4.2, 1])
+    with col_input:
+        u_query = st.text_input("Вопрос", key=inp_key, placeholder="Задайте следующий вопрос: о ликвидности, кредитах или ВЭД...", label_visibility="collapsed", on_change=_on_enter)
+    with col_submit:
+        ask_clicked = st.button("Спросить", key=f"ask_{ins['id']}")
 
-        history = st.session_state.chat_history.get(ins['id'], [])
-        if isinstance(history, dict):  # совместимость со старым форматом (одна пара вопрос-ответ)
-            history = [history]
-        st.session_state.chat_history[ins['id']] = history
+    enter_pressed = st.session_state.pop(send_key, False)
 
-        pending_q = None
-        if ask_clicked or selected_preset or enter_pressed:
-            txt = selected_preset if selected_preset else (u_query or "").strip()
-            if txt:
-                pending_q = txt
-                st.session_state.last_api_call = time.time()
+    history = st.session_state.chat_history.get(ins['id'], [])
+    if isinstance(history, dict):  # совместимость со старым форматом (одна пара вопрос-ответ)
+        history = [history]
+    st.session_state.chat_history[ins['id']] = history
 
-        with hist_box:
-            for h in history:
-                st.markdown(f'<div class="chat-bubble-user"><b>Вы:</b> {h["q"]}</div>', unsafe_allow_html=True)
-                with st.container(border=True):
-                    st.markdown(h["a"])
-            if pending_q:
-                st.markdown(f'<div class="chat-bubble-user"><b>Вы:</b> {pending_q}</div>', unsafe_allow_html=True)
-                with st.container(border=True):
-                    typing_ph = st.empty()
-                    typing_ph.markdown(
-                        '<div class="typing-wrap"><div class="typing-dots"><span></span><span></span><span></span></div>'
-                        'AI-аналитик печатает…</div>', unsafe_allow_html=True)
+    pending_q = None
+    if ask_clicked or selected_preset or enter_pressed:
+        txt = selected_preset if selected_preset else (u_query or "").strip()
+        if txt:
+            pending_q = txt
+            st.session_state.last_api_call = time.time()
 
-                    def _until_first_token(gen, ph=typing_ph):
-                        first = True
-                        for chunk in gen:
-                            if first:
-                                ph.empty()
-                                first = False
-                            yield chunk
+    with hist_box:
+        for h in history:
+            st.markdown(f'<div class="chat-bubble-user"><b>Вы:</b> {h["q"]}</div>', unsafe_allow_html=True)
+            with st.container(border=True):
+                st.markdown(h["a"])
+        if pending_q:
+            st.markdown(f'<div class="chat-bubble-user"><b>Вы:</b> {pending_q}</div>', unsafe_allow_html=True)
+            with st.container(border=True):
+                typing_ph = st.empty()
+                typing_ph.markdown(
+                    '<div class="typing-wrap"><div class="typing-dots"><span></span><span></span><span></span></div>'
+                    'AI-аналитик печатает…</div>', unsafe_allow_html=True)
+
+                def _until_first_token(gen, ph=typing_ph):
+                    first = True
+                    for chunk in gen:
                         if first:
                             ph.empty()
+                            first = False
+                        yield chunk
+                    if first:
+                        ph.empty()
 
-                    ans = st.write_stream(_until_first_token(
-                        ask_ai_stream(current_company, selected_role_label, ins, pending_q, history)))
-                history.append({"q": pending_q, "a": ans})
-                if not selected_preset:
-                    st.session_state[f"clear_{ins['id']}"] = True
-                    st.rerun()
-            if history:
-                if st.button("Очистить диалог", key=f"clr_{ins['id']}"):
-                    st.session_state.chat_history[ins['id']] = []
-                    st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+                ans = st.write_stream(_until_first_token(
+                    ask_ai_stream(current_company, selected_role_label, ins, pending_q, history)))
+            history.append({"q": pending_q, "a": ans})
+            if not selected_preset:
+                st.session_state[f"clear_{ins['id']}"] = True
+                st.rerun()
+        if history:
+            if st.button("Очистить диалог", key=f"clr_{ins['id']}"):
+                st.session_state.chat_history[ins['id']] = []
+                st.rerun()
 
     st.markdown("<center style='color:#9CA3AF;font-size:0.8rem;margin-top:20px;'>Интернет-банк «Альфа-Бизнес» &nbsp;•&nbsp; Сервис «Альфа-Инсайт»</center>", unsafe_allow_html=True)
