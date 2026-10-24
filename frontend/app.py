@@ -823,7 +823,8 @@ def _build_feed(company_id: str, role_code: str) -> dict:
         results.sort(key=lambda r: r.relevance_score, reverse=True)
         if not results:
             raise ValueError("лента пуста")
-        focus = ROLE_PERSONAS.get(role_code, {}).get("focus", "")
+        _p = ROLE_PERSONAS.get(role_code, {})
+        focus = _p.get("focus", "") + ((". Обязательно учитывай в ответах: " + _p["must_cover"]) if _p.get("must_cover") else "")
         ok = (after.get("live", 0) - before.get("live", 0)) + (after.get("cached", 0) - before.get("cached", 0))
         bad = after.get("fallback", 0) - before.get("fallback", 0)
         mode = "live" if (bad == 0 and ok > 0) else ("mixed" if ok > 0 else "deterministic")
@@ -903,8 +904,26 @@ def _build_ctx(company: dict, role: str, insight: dict) -> str:
         f"Позиция Альфа-Банка: {insight.get('alfa_quote')}"
     )
 
-def _offline_answer(question: str) -> str:
+_DEFAULT_QUESTIONS = [
+    ("Рассчитать влияние на долговую нагрузку", "Рассчитай влияние на долговую нагрузку компании"),
+    ("Оценить риски цепочки контрагентов", "Как это отразится на наших поставщиках и покупателях?"),
+]
+
+def _role_questions(role_code: str) -> list:
+    """Быстрые вопросы под роль (из ROLE_PERSONAS бэкенда); без бэкенда — общие."""
+    p = (globals().get("ROLE_PERSONAS") or {}).get(role_code) or {}
+    return list(p.get("questions") or _DEFAULT_QUESTIONS)[:2]
+
+def _offline_answer(question: str, role_code: str = "CFO") -> str:
     q_low = question.lower()
+    p = (globals().get("ROLE_PERSONAS") or {}).get(role_code)
+    if p and role_code != "CFO":
+        steps = "\n\n".join("• " + x for x in p["steps"])
+        return (
+            f"**{p['title']}: приоритеты по событию**\n\n"
+            f"Для вашей роли ключевое: {p['must_cover']}.\n\n{steps}\n\n"
+            "Уточните вопрос, и я рассчитаю влияние именно для вашей роли."
+        )
     if any(w in q_low for w in ["долг", "нагрузк", "ставк", "процент", "кредит"]):
         return (
             "**Финансовый расчет долговой нагрузки (CFO View):**\n\n"
@@ -998,14 +1017,14 @@ def stream_live_llm(prompt: str, context: str, history: list = None):
                 return
             continue
 
-def ask_ai_stream(company: dict, role: str, insight: dict, question: str, history: list = None):
+def ask_ai_stream(company: dict, role: str, insight: dict, question: str, history: list = None, role_code: str = "CFO"):
     """Генератор для st.write_stream: живой поток от модели, при сбое — заготовленный ответ по словам."""
     produced = False
     for chunk in stream_live_llm(question, _build_ctx(company, role, insight), history):
         produced = True
         yield chunk
     if not produced:
-        for tok in re.split(r"(\s+)", _offline_answer(question)):
+        for tok in re.split(r"(\s+)", _offline_answer(question, role_code)):
             if tok:
                 yield tok
                 time.sleep(0.02)
@@ -1561,12 +1580,13 @@ else:
 
     col_q1, col_q2 = st.columns(2)
     selected_preset = None
+    _rq = _role_questions(current_role_code)
     with col_q1:
-        if st.button("Рассчитать влияние на долговую нагрузку", key=f"q1_{ins['id']}"):
-            selected_preset = "Рассчитай влияние на долговую нагрузку компании"
+        if st.button(_rq[0][0], key=f"q1_{ins['id']}_{current_role_code}"):
+            selected_preset = _rq[0][1]
     with col_q2:
-        if st.button("Оценить риски цепочки контрагентов", key=f"q2_{ins['id']}"):
-            selected_preset = "Как это отразится на наших поставщиках и покупателях?"
+        if st.button(_rq[1][0], key=f"q2_{ins['id']}_{current_role_code}"):
+            selected_preset = _rq[1][1]
 
     st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
 
@@ -1623,7 +1643,7 @@ else:
                         ph.empty()
 
                 ans = st.write_stream(_until_first_token(
-                    ask_ai_stream(current_company, selected_role_label, ins, pending_q, history)))
+                    ask_ai_stream(current_company, selected_role_label, ins, pending_q, history, current_role_code)))
             history.append({"q": pending_q, "a": ans})
             if not selected_preset:
                 st.session_state[f"clear_{ins['id']}"] = True
