@@ -14,6 +14,12 @@ import os
 import sys
 import time
 import base64
+import json
+import re
+import io
+from datetime import datetime
+from xml.sax.saxutils import escape as xml_escape
+import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Any
 
@@ -564,6 +570,22 @@ st.markdown("""
     /* Пустая оболочка карточки создавала белый пустой блок */
     .apple-card-panel:empty { display: none !important; }
 
+    /* Калькулятор свопа и кнопка PDF */
+    .swap-box { border-radius: 14px; padding: 14px 16px; border: 1px solid #E5E7EB; background: #F9FAFB; height: 100%; }
+    .swap-box.before { border-left: 4px solid #9CA3AF; }
+    .swap-box.after  { border-left: 4px solid #0071E3; background: #F8FAFC; }
+    .swap-box.save-pos { border-left: 4px solid #16A34A; background: #F6FDF8; }
+    .swap-box.save-neg { border-left: 4px solid #DC2626; background: #FFF8F8; }
+    .swap-lbl { font-size: 0.72rem; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 0.04em; }
+    .swap-val { font-size: 1.45rem; font-weight: 700; color: #111827; margin-top: 2px; }
+    .swap-sub { font-size: 0.78rem; color: #4B5563; margin-top: 2px; }
+    [data-testid="stDownloadButton"] button {
+        background: #FFFFFF !important; color: #111827 !important;
+        border: 1px solid #D1D5DB !important; border-radius: 980px !important;
+        font-weight: 600 !important; min-height: 42px !important; width: 100% !important;
+    }
+    [data-testid="stDownloadButton"] button:hover { border-color: #EF3124 !important; color: #EF3124 !important; background: #FFF8F7 !important; }
+
     @media (max-width: 768px) {
         div.block-container {
             padding: 4.6rem 0.6rem 3rem 0.6rem !important;
@@ -754,8 +776,8 @@ def call_live_llm(prompt: str, context: str, history: list = None) -> str:
             continue
     return None
 
-def ask_ai_chat(company: dict, role: str, insight: dict, question: str, history: list = None) -> str:
-    ctx = (
+def _build_ctx(company: dict, role: str, insight: dict) -> str:
+    return (
         f"Компания: {company.get('display_name')}\n"
         f"ОКВЭД: {company.get('main_okved_code')}\n"
         f"Выручка: {company.get('revenue')} руб., Кредитный долг: {company.get('debt_preview')}\n"
@@ -764,10 +786,7 @@ def ask_ai_chat(company: dict, role: str, insight: dict, question: str, history:
         f"Позиция Альфа-Банка: {insight.get('alfa_quote')}"
     )
 
-    live_result = call_live_llm(question, ctx, history)
-    if live_result:
-        return live_result
-
+def _offline_answer(question: str) -> str:
     q_low = question.lower()
     if any(w in q_low for w in ["долг", "нагрузк", "ставк", "процент", "кредит"]):
         return (
@@ -777,11 +796,278 @@ def ask_ai_chat(company: dict, role: str, insight: dict, question: str, history:
             "• **Ковенанты:** Коэффициент покрытия долга (ICR) составит **3.15x** при допустимом пороге 2.80x.\n\n"
             "• **Рекомендация:** Зафиксировать ставку по траншу 5.0 млрд руб. на уровне 12.6% через IRS Альфа-Банка."
         )
-
     return (
         "**Аналитическая служба Альфа-Инсайт:**\n\n"
         "Приветствую! Для вашего предприятия ключевой задачей на 4 квартал является защита рентабельности от жесткой политики ЦБ. "
         "Готов рассчитать влияние ставки 14% на долговую нагрузку или смоделировать риски по цепочке контрагентов. Какой расчет сформировать?"
+    )
+
+def ask_ai_chat(company: dict, role: str, insight: dict, question: str, history: list = None) -> str:
+    live_result = call_live_llm(question, _build_ctx(company, role, insight), history)
+    return live_result if live_result else _offline_answer(question)
+
+# ПОТОКОВЫЙ ВЫВОД: ответ появляется по мере генерации (SSE)
+def stream_live_llm(prompt: str, context: str, history: list = None):
+    headers = {
+        "Authorization": f"Bearer {LLM_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    system_msg = (
+        "Ты — старший финансово-экономический аналитик Центра макроэкономических исследований Альфа-Банка. "
+        "Твоя аудитория — топ-менеджмент крупного бизнеса (CEO, CFO, Руководитель казначейства). "
+        "Правила ответа:\n"
+        "1. ВСЕГДА заканчивай свою мысль и предложения полностью. Никаких обрывов текста.\n"
+        "2. Если пользователь просто здоровается или обращается неформально: "
+        "с достоинством поприветствуй его и сразу же переведи разговор в деловое русло, кратко обозначив 2 главных финансовых риска текущей компании по ставке 14% и спросив, какой показатель рассчитать детально.\n"
+        "3. Если задан конкретный вопрос — дай глубокий расчет с цифрами компании, влиянием на прибыль и решением от Альфа-Банка."
+    )
+    payload = {
+        "model": LLM_MODEL,
+        "messages": _build_messages(system_msg, context, prompt, history),
+        "temperature": 0.3,
+        "max_tokens": 1800,
+        "stream": True
+    }
+    for url in [f"{PRIMARY_URL}/chat/completions", f"{BACKUP_URL}/chat/completions"]:
+        got = False
+        try:
+            with requests.post(url, headers=headers, json=payload, stream=True, timeout=(5, 20)) as r:
+                if r.status_code != 200:
+                    continue
+                ctype = r.headers.get("Content-Type", "")
+                if "event-stream" not in ctype:
+                    # шлюз проигнорировал stream=True и вернул обычный JSON
+                    content = r.json()["choices"][0]["message"]["content"]
+                    if content and content.strip():
+                        yield content
+                        return
+                    continue
+                for raw in r.iter_lines():
+                    if not raw:
+                        continue
+                    line = raw.decode("utf-8", "ignore")
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        delta = json.loads(data)["choices"][0]["delta"].get("content") or ""
+                    except Exception:
+                        continue
+                    if delta:
+                        got = True
+                        yield delta
+            if got:
+                return
+        except Exception:
+            if got:
+                return
+            continue
+
+def ask_ai_stream(company: dict, role: str, insight: dict, question: str, history: list = None):
+    """Генератор для st.write_stream: живой поток от модели, при сбое — заготовленный ответ по словам."""
+    produced = False
+    for chunk in stream_live_llm(question, _build_ctx(company, role, insight), history):
+        produced = True
+        yield chunk
+    if not produced:
+        for tok in re.split(r"(\s+)", _offline_answer(question)):
+            if tok:
+                yield tok
+                time.sleep(0.02)
+
+# КАЛЬКУЛЯТОР СВОПА И ГРАФИКИ
+SWAP_SPREAD = 2.1        # спред к ключевой ставке по ГКС №ALF-774, % годовых
+SWAP_KEY_RATE = 14.0     # текущая ключевая ставка, %
+SWAP_TERM_MONTHS = 24    # срок свопа, мес.
+
+def _fmt(x: float, d: int = 1) -> str:
+    return f"{x:,.{d}f}".replace(",", " ")
+
+def _rate_scenarios() -> "pd.DataFrame":
+    """Иллюстративные сценарии ключевой ставки на 2027 г. (базовый откалиброван на средний прогноз Альфа-Банка 12.5%)."""
+    months = pd.date_range("2027-01-01", periods=12, freq="MS")
+    base = [13.7 - i * (2.4 / 11) for i in range(12)]    # среднее ≈ 12.5
+    soft = [13.3 - i * (3.6 / 11) for i in range(12)]    # мягкий: ≈ 11.5
+    hard = [14.0 + i * (1.0 / 11) for i in range(12)]    # жёсткий: ≈ 14.5
+    return pd.DataFrame({"Базовый (прогноз Альфа-Банка)": base, "Мягкий": soft, "Жёсткий": hard}, index=months)
+
+def compute_swap(amount_bn: float, swap_rate: float) -> dict:
+    amt_mln = amount_bn * 1000.0
+    before_year = amt_mln * (SWAP_KEY_RATE + SWAP_SPREAD) / 100.0
+    after_year = amt_mln * (swap_rate + SWAP_SPREAD) / 100.0
+    save_year = before_year - after_year
+    sc = _rate_scenarios()
+    sc_cost = {name: amt_mln * (sc[name].mean() + SWAP_SPREAD) / 100.0 for name in sc.columns}
+    return {
+        "amount_bn": amount_bn, "swap_rate": swap_rate,
+        "before_year": before_year, "after_year": after_year,
+        "before_month": before_year / 12, "after_month": after_year / 12,
+        "save_year": save_year, "save_month": save_year / 12,
+        "save_term": save_year * SWAP_TERM_MONTHS / 12,
+        "irs_cost_2027": after_year, "sc_cost": sc_cost,
+    }
+
+def render_swap_calculator(ins: dict) -> dict:
+    st.markdown(
+        '<div style="font-size:0.92rem;font-weight:700;color:#111827;margin:18px 0 4px 0;">Калькулятор процентного свопа (IRS)</div>'
+        f'<div style="font-size:0.8rem;color:#6B7280;margin-bottom:8px;">Формула: сумма × (ставка + спред {SWAP_SPREAD}%) ÷ 12. '
+        f'Сравнение с текущей ключевой {SWAP_KEY_RATE}%, срок {SWAP_TERM_MONTHS} мес.</div>',
+        unsafe_allow_html=True
+    )
+    s1, s2 = st.columns(2)
+    with s1:
+        amount_bn = st.slider("Сумма транша, млрд ₽", 0.5, 24.8, 5.0, 0.1, key=f"swap_amt_{ins['id']}")
+    with s2:
+        swap_rate = st.slider("Фиксированная ставка свопа, %", 9.0, 16.0, 12.6, 0.1, key=f"swap_rate_{ins['id']}")
+    r = compute_swap(amount_bn, swap_rate)
+
+    k1, k2, k3 = st.columns(3)
+    with k1:
+        st.markdown(
+            '<div class="swap-box before"><div class="swap-lbl">До: плавающая ставка</div>'
+            f'<div class="swap-val">{_fmt(r["before_month"], 2)} млн ₽/мес</div>'
+            f'<div class="swap-sub">КС {SWAP_KEY_RATE}% + {SWAP_SPREAD}% = {_fmt(SWAP_KEY_RATE + SWAP_SPREAD)}% • {_fmt(r["before_year"])} млн ₽/год</div></div>',
+            unsafe_allow_html=True)
+    with k2:
+        st.markdown(
+            '<div class="swap-box after"><div class="swap-lbl">После: IRS</div>'
+            f'<div class="swap-val">{_fmt(r["after_month"], 2)} млн ₽/мес</div>'
+            f'<div class="swap-sub">{_fmt(swap_rate)}% + {SWAP_SPREAD}% = {_fmt(swap_rate + SWAP_SPREAD)}% • {_fmt(r["after_year"])} млн ₽/год</div></div>',
+            unsafe_allow_html=True)
+    with k3:
+        pos = r["save_year"] >= 0
+        sign = "Экономия" if pos else "Переплата"
+        st.markdown(
+            f'<div class="swap-box {"save-pos" if pos else "save-neg"}"><div class="swap-lbl">{sign} (при КС {SWAP_KEY_RATE}%)</div>'
+            f'<div class="swap-val">{_fmt(abs(r["save_year"]))} млн ₽/год</div>'
+            f'<div class="swap-sub">{_fmt(abs(r["save_month"]), 2)} млн ₽/мес • {_fmt(abs(r["save_term"]))} млн ₽ за {SWAP_TERM_MONTHS} мес.</div></div>',
+            unsafe_allow_html=True)
+
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    g1, g2 = st.columns(2)
+    sc = _rate_scenarios()
+    with g1:
+        st.caption("КЛЮЧЕВАЯ СТАВКА НА 2027 ГОД ПО СЦЕНАРИЯМ, %")
+        line_df = sc.copy()
+        line_df["Фикс. по IRS"] = swap_rate
+        st.line_chart(line_df, color=["#0071E3", "#16A34A", "#DC2626", "#EF3124"], height=260)
+    with g2:
+        st.caption(f"СТОИМОСТЬ ОБСЛУЖИВАНИЯ ТРАНША В 2027 Г., МЛН ₽")
+        order = [("1 Мягкий", "Мягкий"), ("2 Базовый", "Базовый (прогноз Альфа-Банка)"), ("3 Жёсткий", "Жёсткий")]
+        bar_df = pd.DataFrame({
+            "Без хеджа": [r["sc_cost"][k] for _, k in order],
+            "С IRS": [r["irs_cost_2027"]] * 3,
+        }, index=[lbl for lbl, _ in order])
+        st.bar_chart(bar_df, color=["#9CA3AF", "#EF3124"], height=260)
+    d = {lbl: r["sc_cost"][k] - r["irs_cost_2027"] for lbl, k in order}
+    st.caption(
+        "Иллюстративные сценарии; базовый откалиброван на средний прогноз Альфа-Банка 12.5% на 2027 г. "
+        f"Выигрыш IRS против плавающей ставки в 2027 г.: мягкий {_fmt(d['1 Мягкий'])}, базовый {_fmt(d['2 Базовый'])}, "
+        f"жёсткий {_fmt(d['3 Жёсткий'])} млн ₽ (отрицательное значение — своп дороже). Своп страхует от жёсткого сценария."
+    )
+    return r
+
+# PDF-СПРАВКА ДЛЯ РУКОВОДИТЕЛЯ (1 страница)
+def _find_pdf_fonts():
+    base = Path(__file__).resolve().parent
+    pairs = [
+        (base / "fonts" / "DejaVuSans.ttf", base / "fonts" / "DejaVuSans-Bold.ttf"),
+        (Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"), Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")),
+        (Path("/usr/share/fonts/dejavu/DejaVuSans.ttf"), Path("/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf")),
+        (Path("/usr/share/fonts/TTF/DejaVuSans.ttf"), Path("/usr/share/fonts/TTF/DejaVuSans-Bold.ttf")),
+        (Path("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"), Path("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf")),
+        (Path("/Library/Fonts/Arial.ttf"), Path("/Library/Fonts/Arial Bold.ttf")),
+        (Path("/System/Library/Fonts/Supplemental/Arial.ttf"), Path("/System/Library/Fonts/Supplemental/Arial Bold.ttf")),
+        (Path("C:/Windows/Fonts/arial.ttf"), Path("C:/Windows/Fonts/arialbd.ttf")),
+    ]
+    for reg, bold in pairs:
+        if reg.exists():
+            return reg, (bold if bold.exists() else reg)
+    return None, None
+
+def build_cfo_brief_pdf(company: dict, role: str, ins: dict, swap: dict = None):
+    """Возвращает bytes PDF (одна страница A4) или None, если нет reportlab / кириллического шрифта."""
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.lib import colors
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, KeepInFrame
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+    except Exception:
+        return None
+    reg, bold = _find_pdf_fonts()
+    if reg is None:
+        return None
+    try:
+        pdfmetrics.registerFont(TTFont("AlfaSans", str(reg)))
+        pdfmetrics.registerFont(TTFont("AlfaSans-Bold", str(bold)))
+    except Exception:
+        return None
+
+    red = colors.HexColor("#EF3124")
+    grey = colors.HexColor("#6B7280")
+    e = xml_escape
+    body = ParagraphStyle("b", fontName="AlfaSans", fontSize=9.5, leading=13, textColor=colors.HexColor("#111827"))
+    small = ParagraphStyle("s", parent=body, fontSize=8, leading=10.5, textColor=grey)
+    lbl = ParagraphStyle("l", parent=body, fontName="AlfaSans-Bold", fontSize=9, textColor=red)
+    h1 = ParagraphStyle("h1", parent=body, fontName="AlfaSans-Bold", fontSize=15, leading=19)
+    title = ParagraphStyle("t", parent=body, fontName="AlfaSans-Bold", fontSize=11.5, leading=15)
+
+    def P(text, style=body):
+        return Paragraph(text, style)
+
+    risks = [P("• " + e(r_)) for r_ in ins["risks"]]
+    actions = [P(f"{i}. " + e(a_)) for i, a_ in enumerate(ins["actions"], 1)]
+    event = [P(e(ins["title"]), title), Spacer(1, 2), P(e(ins["facts"])),
+             Spacer(1, 2), P(f"{e(ins['date'])} • Источник: {e(ins['source'])}", small)]
+    product = [P(e(ins["prod_title"]), title), Spacer(1, 2), P(e(ins["prod_desc"]))]
+    if swap:
+        sign = "Экономия" if swap["save_year"] >= 0 else "Переплата"
+        product += [Spacer(1, 4), P(
+            f"<b>Расчёт IRS:</b> транш {_fmt(swap['amount_bn'])} млрд ₽, фикс. ставка {_fmt(swap['swap_rate'])}%, срок {SWAP_TERM_MONTHS} мес. "
+            f"Платёж до: {_fmt(swap['before_month'], 2)} млн ₽/мес, после: {_fmt(swap['after_month'], 2)} млн ₽/мес. "
+            f"{sign} при КС {SWAP_KEY_RATE}%: {_fmt(abs(swap['save_year']))} млн ₽/год.")]
+
+    rows = [
+        [P("СОБЫТИЕ", lbl), event],
+        [P("РИСК", lbl), risks],
+        [P("ДЕЙСТВИЕ", lbl), actions],
+        [P("ПРОДУКТ БАНКА", lbl), product],
+    ]
+    tbl = Table(rows, colWidths=[34 * mm, 146 * mm])
+    tbl.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LINEBELOW", (0, 0), (-1, -2), 0.5, colors.HexColor("#E5E7EB")),
+        ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+    ]))
+
+    story = [
+        P("Альфа-Инсайт • Краткая справка для руководителя", h1),
+        Spacer(1, 3),
+        P(f"{e(company.get('display_name', ''))} • Роль: {e(role)} • Сформировано: {datetime.now().strftime('%d.%m.%Y %H:%M')}", small),
+        Spacer(1, 8), tbl, Spacer(1, 10),
+        P("Справка сформирована AI-ассистентом на основе открытых источников и данных клиента. "
+          "Расчёты ориентировочные и не являются офертой; решение принимает уполномоченный сотрудник.", small),
+    ]
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=15 * mm, rightMargin=15 * mm,
+                            topMargin=15 * mm, bottomMargin=15 * mm,
+                            title="Справка Альфа-Инсайт", author="Альфа-Инсайт")
+    frame = KeepInFrame(180 * mm, 267 * mm, story, mode="shrink")  # гарантирует одну страницу
+    doc.build([frame])
+    return buf.getvalue()
+
+def brief_as_text(company: dict, role: str, ins: dict) -> str:
+    return (
+        f"АЛЬФА-ИНСАЙТ: КРАТКАЯ СПРАВКА\n{company.get('display_name')} • {role}\n\n"
+        f"СОБЫТИЕ: {ins['title']}\n{ins['facts']}\n\nРИСК:\n" + "\n".join("- " + r for r in ins["risks"]) +
+        "\n\nДЕЙСТВИЕ:\n" + "\n".join(f"{i}. {a}" for i, a in enumerate(ins["actions"], 1)) +
+        f"\n\nПРОДУКТ: {ins['prod_title']}\n{ins['prod_desc']}\n"
     )
 
 if "chat_history" not in st.session_state:
@@ -795,7 +1081,7 @@ if "last_api_call" not in st.session_state:
 # (например, при переходе на другую вкладку шторки). Переприсваивание делает значения
 # обычными данными сессии, поэтому введённый запрос и отмеченные шаги не сбрасываются.
 for _k in list(st.session_state.keys()):
-    if isinstance(_k, str) and _k.startswith(("inp_", "step_")):
+    if isinstance(_k, str) and _k.startswith(("inp_", "step_", "swap_")):
         st.session_state[_k] = st.session_state[_k]
 
 # ШТОРКА
@@ -1050,6 +1336,10 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
+        swap_res = None
+        if ins["id"] == "ins_cbr_1001":
+            swap_res = render_swap_calculator(ins)
+
         st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
         
         col_btn_left, col_btn_right = st.columns([1.8, 3])
@@ -1061,6 +1351,17 @@ else:
                     st.session_state.applied_products.add(pk)
                     st.balloons()
                     st.rerun()
+        with col_btn_right:
+            pdf_bytes = build_cfo_brief_pdf(current_company, selected_role_label, ins, swap_res)
+            if pdf_bytes:
+                st.download_button("Скачать краткую справку (PDF)", data=pdf_bytes,
+                                   file_name=f"alfa_insight_{ins['id']}.pdf", mime="application/pdf",
+                                   key=f"pdf_{ins['id']}")
+            else:
+                st.download_button("Скачать краткую справку (TXT)", data=brief_as_text(current_company, selected_role_label, ins),
+                                   file_name=f"alfa_insight_{ins['id']}.txt", mime="text/plain",
+                                   key=f"txt_{ins['id']}")
+                st.caption("Для PDF: pip install reportlab и шрифт DejaVuSans в папке fonts/")
 
         st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
 
@@ -1109,29 +1410,26 @@ else:
             history = [history]
         st.session_state.chat_history[ins['id']] = history
 
+        pending_q = None
         if ask_clicked or selected_preset or enter_pressed:
             txt = selected_preset if selected_preset else (u_query or "").strip()
             if txt:
-                # АВТОМАТИЧЕСКИЙ COOLDOWN (3 СЕКУНДЫ ДЛЯ ЗАЩИТЫ ОТ 429 RATE LIMIT)
-                now_ts = time.time()
-                elapsed = now_ts - st.session_state.last_api_call
-                if elapsed < 3.0:
-                    time.sleep(3.0 - elapsed)
+                pending_q = txt
                 st.session_state.last_api_call = time.time()
-
-                with st.spinner("AI-агент DeepSeek рассчитывает финансовые показатели..."):
-                    ans = ask_ai_chat(current_company, selected_role_label, ins, txt, history)
-                history.append({"q": txt, "a": ans})
-                if not selected_preset:
-                    st.session_state[f"clear_{ins['id']}"] = True
-                st.rerun()
 
         with hist_box:
             for h in history:
                 st.markdown(f'<div class="chat-bubble-user"><b>Вы:</b> {h["q"]}</div>', unsafe_allow_html=True)
-                # РЕНДЕРИМ ОТВЕТ С ЧИСТЫМ ФОРМАТИРОВАНИЕМ (БЕЗ СЫРЫХ ЗВЕЗДОЧЕК)
                 with st.container(border=True):
                     st.markdown(h["a"])
+            if pending_q:
+                st.markdown(f'<div class="chat-bubble-user"><b>Вы:</b> {pending_q}</div>', unsafe_allow_html=True)
+                with st.container(border=True):
+                    ans = st.write_stream(ask_ai_stream(current_company, selected_role_label, ins, pending_q, history))
+                history.append({"q": pending_q, "a": ans})
+                if not selected_preset:
+                    st.session_state[f"clear_{ins['id']}"] = True
+                    st.rerun()
             if history:
                 if st.button("Очистить диалог", key=f"clr_{ins['id']}"):
                     st.session_state.chat_history[ins['id']] = []
