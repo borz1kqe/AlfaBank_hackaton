@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»
-Дизайн: Apple Responsive Fintech (Идеально для Desktop и Смартфонов)
+Дизайн: Apple Responsive Fintech (Баг keyboard_double_ уничтожен на 100%)
 """
 
 import streamlit as st
@@ -57,12 +57,28 @@ def get_logo_html() -> str:
                 pass
     return '<span style="background:#EF3124;color:#FFFFFF;padding:4px 9px;border-radius:6px;font-weight:900;font-size:0.85rem;margin-right:8px;">А</span>'
 
-# АДАПТИВНАЯ ДИЗАЙН-СИСТЕМА (DESKTOP + MOBILE)
+# ЖЕЛЕЗОБЕТОННЫЙ CSS
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
     header, #MainMenu, footer { visibility: hidden; height: 0; }
+
+    /* ЖЕЛЕЗНЫЙ ФИКС: УДАЛЯЕМ ЛЮБЫЕ СИСТЕМНЫЕ КНОПКИ И ШАПКУ ШТОРКИ */
+    section[data-testid="stSidebar"] button,
+    section[data-testid="stSidebar"] [data-testid*="Collapse"],
+    section[data-testid="stSidebar"] [data-testid*="headerNoPadding"],
+    section[data-testid="stSidebar"] [data-testid*="stSidebarHeader"],
+    div[data-testid="stSidebarHeader"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        height: 0 !important;
+        width: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow: hidden !important;
+    }
 
     /* ШТОРКА (TITANIUM BLACK) */
     [data-testid="stSidebar"] {
@@ -70,11 +86,14 @@ st.markdown("""
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
     [data-testid="stSidebar"] .block-container {
-        padding: 1.5rem 1rem !important;
+        padding: 1.2rem 1rem !important;
     }
-    [data-testid="stSidebar"] div, [data-testid="stSidebar"] p, [data-testid="stSidebar"] span {
-        color: #F9FAFB;
+    [data-testid="stSidebar"] {
+        color: #F9FAFB !important;
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif;
+    }
+    [data-testid="stSidebar"] p, [data-testid="stSidebar"] div {
+        color: #F9FAFB;
     }
     [data-testid="stSidebar"] label, [data-testid="stSidebar"] .stCaption {
         color: #9CA3AF !important;
@@ -110,7 +129,7 @@ st.markdown("""
     }
     [data-testid="stSidebar"] div[data-testid="stRadio"] input { display: none !important; }
 
-    /* ОСНОВНОЙ ЭКРАН (APPLE CANVAS) */
+    /* ОСНОВНОЙ ЭКРАН */
     [data-testid="stAppViewContainer"], .stApp {
         background-color: #F5F5F7 !important;
         color: #111827 !important;
@@ -126,7 +145,6 @@ st.markdown("""
         letter-spacing: -0.016em;
     }
 
-    /* Верхний инфо-бар компании */
     .apple-kpi-bar {
         background: #FFFFFF;
         border: 1px solid rgba(0, 0, 0, 0.05);
@@ -140,8 +158,6 @@ st.markdown("""
         flex-wrap: wrap;
         gap: 12px;
     }
-
-    /* Точка входа */
     .apple-hero-banner {
         background: #FFFFFF;
         border: 1px solid rgba(0, 0, 0, 0.06);
@@ -162,8 +178,6 @@ st.markdown("""
         text-transform: uppercase;
         letter-spacing: 0.02em;
     }
-
-    /* Главная карточка */
     .apple-card-panel {
         background: #FFFFFF;
         border: 1px solid rgba(0, 0, 0, 0.06);
@@ -238,8 +252,6 @@ st.markdown("""
         padding: 16px 20px;
         height: 100%;
     }
-
-    /* БАНКОВСКАЯ КАРТОЧКА ПРОДУКТА */
     .product-apple-card {
         background: #F9FAFB;
         border: 1px solid #E5E7EB;
@@ -249,7 +261,7 @@ st.markdown("""
         margin-top: 16px;
     }
 
-    /* ТАКТИЛЬНЫЕ КНОПКИ APPLE */
+    /* КНОПКИ */
     div.stButton > button {
         background-color: #FFFFFF !important;
         color: #374151 !important;
@@ -261,7 +273,6 @@ st.markdown("""
         min-height: 42px !important;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
         width: 100% !important;
-        transition: all 0.15s ease !important;
     }
     div.stButton > button:hover {
         background-color: #F3F4F6 !important;
@@ -278,7 +289,6 @@ st.markdown("""
         min-height: 44px !important;
     }
 
-    /* ИНТЕЛЛЕКТУАЛЬНЫЕ ПУЗЫРИ ЧАТА IMESSAGE */
     .chat-bubble-user {
         background: #E5E7EB;
         border-radius: 16px 16px 4px 16px;
@@ -297,11 +307,10 @@ st.markdown("""
         font-size: 0.92rem;
         line-height: 1.6;
         color: #111827;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.02);
         max-width: 95%;
     }
 
-    /* АДАПТИВНОСТЬ ПОД МОБИЛЬНЫЕ УСТРОЙСТВА */
     @media (max-width: 768px) {
         div.block-container {
             padding: 0.8rem 0.6rem 3rem 0.6rem !important;
@@ -310,12 +319,8 @@ st.markdown("""
             padding: 18px 14px !important;
             border-radius: 16px !important;
         }
-        .apple-title-h2 {
-            font-size: 1.15rem !important;
-        }
-        .apple-kpi-bar {
-            padding: 14px 16px !important;
-        }
+        .apple-title-h2 { font-size: 1.15rem !important; }
+        .apple-kpi-bar { padding: 14px 16px !important; }
         div[data-testid="column"] {
             min-width: 100% !important;
             margin-bottom: 8px !important;
@@ -327,7 +332,7 @@ st.markdown("""
 SVG = {
     "shield": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
     "trend": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>',
-    "bank": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0071E3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><rect width="20" height="4" x="2" y="3" rx="1"/><path d="M4 7v11"/><path d="M8 7v11"/><path d="M12 7v11"/><path d="M16 7v11"/><path d="M20 7v11"/><rect width="20" height="3" x="2" y="18" rx="1"/></svg>',
+    "bank": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0071E3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><rect width="20" height="4" x="2" y="3" rx="1"/><path d="M4 7v11"/><path d="M8 7v11"/><path d="M12 7v11"/><path d="M16 7v11"/><path d="M20 7v11"/><rect width="20" height="3" x="2" y="18" rx="1"/></svg>',
     "sparkles": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#EF3124" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>',
     "tag": '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M12 2H2v10l9.29 9.29a2.41 2.41 0 0 0 3.42 0l6.58-6.58a2.41 2.41 0 0 0 0-3.42L12 2Z"/><circle cx="7" cy="7" r="1.5"/></svg>',
     "check": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>',
