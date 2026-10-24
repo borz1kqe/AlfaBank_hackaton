@@ -807,11 +807,13 @@ def _build_feed(company_id: str, role_code: str) -> dict:
     try:
         company = COMPANIES_DB[company_id]
         llm = BACKEND_AGENT.llm
-        before = dict(getattr(llm, "stats", {"live": 0, "cached": 0, "fallback": 0}))
+        if not hasattr(llm, "stats"):
+            raise RuntimeError("в репозитории старый src/services/llm_client.py — замените файл на новый")
+        before = dict(llm.stats)
         with ThreadPoolExecutor(max_workers=max(1, len(NEWS_DB))) as ex:
             results = list(ex.map(
                 lambda n: BACKEND_AGENT.process_single_event(company, role_code, n, BANK_RESEARCH_DB), NEWS_DB))
-        after = dict(getattr(llm, "stats", before))
+        after = dict(llm.stats)
         results = [r for r in results if r.relevance_score >= MIN_RELEVANCE]
         results.sort(key=lambda r: r.relevance_score, reverse=True)
         if not results:
@@ -1246,6 +1248,19 @@ with st.sidebar:
     if st.button("Обновить аналитику", key="refresh_feed"):
         _feed_store().clear()
         st.rerun()
+    with st.expander("Диагностика ИИ"):
+        if BACKEND_OK:
+            _llm = BACKEND_AGENT.llm
+            st.write({
+                "ключ задан": bool(getattr(_llm, "api_key", "")),
+                "клиент создан": getattr(_llm, "client", None) is not None,
+                "адрес шлюза": getattr(_llm, "base_url", "?"),
+                "счётчики (live/cached/fallback)": getattr(_llm, "stats", "нет — старый llm_client.py"),
+                "последняя модель": getattr(_llm, "last_model", ""),
+                "последняя ошибка": getattr(_llm, "last_error", ""),
+            })
+        else:
+            st.write({"бэкенд": BACKEND_ERR})
 
 # ЗАПАСНАЯ КНОПКА ОТКРЫТИЯ ШТОРКИ (появляется, только когда шторка свёрнута)
 _SIDEBAR_BTN_JS = """
