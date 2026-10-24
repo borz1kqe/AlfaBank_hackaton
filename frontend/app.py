@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»
-Дизайн: Apple Responsive Fintech (Баг keyboard_double_ уничтожен на 100%)
+Дизайн: Выдвижная шторка (Desktop + Mobile Drawer) без шрифтовых багов
 """
 
 import streamlit as st
@@ -16,14 +16,15 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+# Шторка адаптируется автоматически: на ПК раскрыта, на смартфонах свернута
 st.set_page_config(
     page_title="Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»",
     page_icon="https://alfabank.servicecdn.ru/icons/corp/favicons/favicon.ico",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"
 )
 
-# Официальные шлюзы и ключи
+# Ключи и настройки
 LLM_API_KEY = st.secrets.get("LLM_API_KEY") if hasattr(st, "secrets") and "LLM_API_KEY" in st.secrets else os.getenv("LLM_API_KEY", "sk-ARm7HMnjyUUX-_sG3Qsicw")
 LLM_BASE_URL = (st.secrets.get("LLM_BASE_URL") if hasattr(st, "secrets") and "LLM_BASE_URL" in st.secrets else os.getenv("LLM_BASE_URL", "https://changellenge.up.railway.app/v1")).rstrip("/")
 LLM_MODEL = st.secrets.get("LLM_MODEL") if hasattr(st, "secrets") and "LLM_MODEL" in st.secrets else os.getenv("LLM_MODEL", "deepseek/deepseek-v4.1-flash")
@@ -43,9 +44,7 @@ def get_logo_html() -> str:
         Path("logos/alfa-bank-business.svg"),
         Path("frontend/logos/alfa-bank-business.svg"),
         Path("assets/alfa-bank-business.svg"),
-        Path("alfa-bank-business.svg"),
-        Path("logos/alfa-bank.svg"),
-        Path("alfa-bank.svg")
+        Path("alfa-bank-business.svg")
     ]
     for p in paths:
         if p.exists():
@@ -57,43 +56,84 @@ def get_logo_html() -> str:
                 pass
     return '<span style="background:#EF3124;color:#FFFFFF;padding:4px 9px;border-radius:6px;font-weight:900;font-size:0.85rem;margin-right:8px;">А</span>'
 
-# ЖЕЛЕЗОБЕТОННЫЙ CSS
+# CSS С ВЫДВИЖНОЙ ШТОРКОЙ ДЛЯ ПК И ТЕЛЕФОНОВ
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-    header, #MainMenu, footer { visibility: hidden; height: 0; }
-
-    /* ЖЕЛЕЗНЫЙ ФИКС: УДАЛЯЕМ ЛЮБЫЕ СИСТЕМНЫЕ КНОПКИ И ШАПКУ ШТОРКИ */
-    section[data-testid="stSidebar"] button,
-    section[data-testid="stSidebar"] [data-testid*="Collapse"],
-    section[data-testid="stSidebar"] [data-testid*="headerNoPadding"],
-    section[data-testid="stSidebar"] [data-testid*="stSidebarHeader"],
-    div[data-testid="stSidebarHeader"] {
+    #MainMenu, footer, div[data-testid="stStatusWidget"], .viewerBadge_container__1QSob {
         display: none !important;
         visibility: hidden !important;
-        opacity: 0 !important;
-        height: 0 !important;
-        width: 0 !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        overflow: hidden !important;
     }
 
-    /* ШТОРКА (TITANIUM BLACK) */
+    /* ФИКС СИСТЕМНОЙ КНОПКИ ВЫЗОВА ШТОРКИ */
+    header[data-testid="stHeader"] {
+        background: transparent !important;
+        height: 0 !important;
+    }
+
+    /* Кнопка открытия шторки на основном экране */
+    [data-testid="stSidebarCollapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+        position: fixed !important;
+        top: 14px !important;
+        left: 14px !important;
+        z-index: 999999 !important;
+    }
+    [data-testid="stSidebarCollapsedControl"] button {
+        background-color: #111827 !important;
+        color: #FFFFFF !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15) !important;
+        padding: 6px 14px !important;
+        height: 38px !important;
+    }
+    [data-testid="stSidebarCollapsedControl"] button span {
+        display: none !important;
+    }
+    [data-testid="stSidebarCollapsedControl"] button::after {
+        content: "› Меню" !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
+        color: #FFFFFF !important;
+    }
+
+    /* Кнопка закрытия шторки внутри самой шторки */
+    [data-testid="stSidebarHeader"] button,
+    [data-testid="stSidebarCollapseButton"] {
+        background: rgba(255, 255, 255, 0.08) !important;
+        border-radius: 8px !important;
+        border: none !important;
+        width: 32px !important;
+        height: 32px !important;
+    }
+    [data-testid="stSidebarHeader"] button span,
+    [data-testid="stSidebarCollapseButton"] span {
+        display: none !important;
+    }
+    [data-testid="stSidebarHeader"] button::after,
+    [data-testid="stSidebarCollapseButton"]::after {
+        content: "‹" !important;
+        font-size: 22px !important;
+        font-weight: 700 !important;
+        color: #9CA3AF !important;
+        line-height: 1 !important;
+    }
+
+    /* ВЫДВИЖНАЯ ШТОРКА (TITANIUM BLACK) */
     [data-testid="stSidebar"] {
         background-color: #111827 !important;
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }
     [data-testid="stSidebar"] .block-container {
         padding: 1.2rem 1rem !important;
     }
-    [data-testid="stSidebar"] {
-        color: #F9FAFB !important;
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif;
-    }
-    [data-testid="stSidebar"] p, [data-testid="stSidebar"] div {
+    [data-testid="stSidebar"] div, [data-testid="stSidebar"] p, [data-testid="stSidebar"] span {
         color: #F9FAFB;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif;
     }
     [data-testid="stSidebar"] label, [data-testid="stSidebar"] .stCaption {
         color: #9CA3AF !important;
@@ -135,7 +175,7 @@ st.markdown("""
         color: #111827 !important;
     }
     div.block-container {
-        padding-top: 1.2rem !important;
+        padding-top: 1.5rem !important;
         padding-bottom: 4rem !important;
         max-width: 1080px !important;
     }
@@ -261,7 +301,7 @@ st.markdown("""
         margin-top: 16px;
     }
 
-    /* КНОПКИ */
+    /* КНОПКИ APPLE */
     div.stButton > button {
         background-color: #FFFFFF !important;
         color: #374151 !important;
@@ -273,6 +313,7 @@ st.markdown("""
         min-height: 42px !important;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
         width: 100% !important;
+        transition: all 0.15s ease !important;
     }
     div.stButton > button:hover {
         background-color: #F3F4F6 !important;
@@ -307,13 +348,13 @@ st.markdown("""
         font-size: 0.92rem;
         line-height: 1.6;
         color: #111827;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
         max-width: 95%;
     }
 
     @media (max-width: 768px) {
         div.block-container {
-            padding: 0.8rem 0.6rem 3rem 0.6rem !important;
+            padding: 2.5rem 0.6rem 3rem 0.6rem !important;
         }
         .apple-card-panel {
             padding: 18px 14px !important;
@@ -523,7 +564,7 @@ if "chat_history" not in st.session_state:
 if "applied_products" not in st.session_state:
     st.session_state.applied_products = set()
 
-# ШТОРКА
+# ВЫДВИЖНАЯ ШТОРКА
 with st.sidebar:
     st.markdown(f'<div style="display:flex;align-items:center;margin-bottom:20px;">{get_logo_html()}<span style="font-weight:700;font-size:1.05rem;letter-spacing:-0.02em;">АЛЬФА-БИЗНЕС</span></div>', unsafe_allow_html=True)
     
