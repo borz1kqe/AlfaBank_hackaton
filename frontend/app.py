@@ -68,65 +68,123 @@ st.markdown("""
     header[data-testid="stHeader"] {
         background: transparent !important;
         height: 0 !important;
+        min-height: 0 !important;
+        overflow: visible !important;
     }
 
-    /* ЯРКАЯ КОНТРАСТНАЯ КНОПКА ОТКРЫТИЯ ШТОРКИ */
-    [data-testid="stSidebarCollapsedControl"] {
+    /* КНОПКА ОТКРЫТИЯ ШТОРКИ: яркая, с подписью, всегда поверх контента */
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="stExpandSidebarButton"] {
         display: flex !important;
         visibility: visible !important;
+        opacity: 1 !important;
+    }
+    [data-testid="stSidebarCollapsedControl"] {
         position: fixed !important;
         top: 14px !important;
         left: 14px !important;
         z-index: 999999 !important;
     }
-    [data-testid="stSidebarCollapsedControl"] button {
-        background-color: #111827 !important;
+    [data-testid="stSidebarCollapsedControl"] button,
+    button[data-testid="stExpandSidebarButton"] {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 8px !important;
+        background: linear-gradient(135deg, #EF3124 0%, #C8201A 100%) !important;
         color: #FFFFFF !important;
-        border: 1px solid rgba(255, 255, 255, 0.25) !important;
-        border-radius: 12px !important;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
-        padding: 8px 16px !important;
-        height: 40px !important;
-        min-width: 120px !important;
+        border: none !important;
+        border-radius: 14px !important;
+        height: 44px !important;
+        min-width: 138px !important;
+        padding: 0 18px !important;
         cursor: pointer !important;
-        transition: all 0.2s ease !important;
+        box-shadow: 0 8px 22px rgba(239, 49, 36, 0.35), 0 0 0 4px rgba(239, 49, 36, 0.12) !important;
+        transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+        animation: alfa-pulse 2.8s ease-in-out infinite;
     }
-    [data-testid="stSidebarCollapsedControl"] button:hover {
-        background-color: #1F2937 !important;
-        border-color: #EF3124 !important;
-        transform: translateY(-1px) !important;
+    [data-testid="stSidebarCollapsedControl"] button:hover,
+    button[data-testid="stExpandSidebarButton"]:hover {
+        transform: translateY(-1px) scale(1.03) !important;
+        box-shadow: 0 12px 28px rgba(239, 49, 36, 0.45), 0 0 0 5px rgba(239, 49, 36, 0.18) !important;
     }
-    [data-testid="stSidebarCollapsedControl"] button span,
-    [data-testid="stSidebarCollapsedControl"] button svg {
+    [data-testid="stSidebarCollapsedControl"] button > *,
+    button[data-testid="stExpandSidebarButton"] > * {
         display: none !important;
     }
-    [data-testid="stSidebarCollapsedControl"] button::after {
-        content: "Меню банка ›" !important;
-        font-size: 13px !important;
-        font-weight: 700 !important;
-        color: #FFFFFF !important;
+    [data-testid="stSidebarCollapsedControl"] button::before,
+    button[data-testid="stExpandSidebarButton"]::before {
+        content: "☰";
+        font-size: 18px;
+        line-height: 1;
+        color: #FFFFFF;
+    }
+    [data-testid="stSidebarCollapsedControl"] button::after,
+    button[data-testid="stExpandSidebarButton"]::after {
+        content: "Меню банка";
+        font-size: 13.5px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        color: #FFFFFF;
+    }
+    @keyframes alfa-pulse {
+        0%, 100% { box-shadow: 0 8px 22px rgba(239, 49, 36, 0.35), 0 0 0 4px rgba(239, 49, 36, 0.12); }
+        50%      { box-shadow: 0 8px 22px rgba(239, 49, 36, 0.35), 0 0 0 9px rgba(239, 49, 36, 0.05); }
     }
 
-    /* Кнопка закрытия внутри шторки */
-    [data-testid="stSidebarHeader"] button,
-    [data-testid="stSidebarCollapseButton"] {
-        background: rgba(255, 255, 255, 0.08) !important;
-        border-radius: 8px !important;
-        border: none !important;
-        width: 32px !important;
-        height: 32px !important;
+    /* КНОПКА ЗАКРЫТИЯ ШТОРКИ: контрастная, с подписью */
+    [data-testid="stSidebarHeader"] {
+        display: flex !important;
+        justify-content: flex-end !important;
+        align-items: center !important;
+        padding: 0.9rem 1rem 0.2rem 1rem !important;
     }
-    [data-testid="stSidebarHeader"] button span,
-    [data-testid="stSidebarCollapseButton"] span {
+    [data-testid="stSidebarCollapseButton"] button,
+    button[data-testid="stSidebarCollapseButton"],
+    [data-testid="stSidebarHeader"] button {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 6px !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        background: rgba(255, 255, 255, 0.12) !important;
+        border: 1px solid rgba(255, 255, 255, 0.30) !important;
+        border-radius: 10px !important;
+        height: 36px !important;
+        width: auto !important;
+        min-width: 108px !important;
+        padding: 0 14px !important;
+        cursor: pointer !important;
+        transition: all 0.18s ease !important;
+    }
+    [data-testid="stSidebarCollapseButton"] button:hover,
+    button[data-testid="stSidebarCollapseButton"]:hover,
+    [data-testid="stSidebarHeader"] button:hover {
+        background: #EF3124 !important;
+        border-color: #EF3124 !important;
+    }
+    [data-testid="stSidebarCollapseButton"] button > *,
+    button[data-testid="stSidebarCollapseButton"] > *,
+    [data-testid="stSidebarHeader"] button > * {
         display: none !important;
     }
-    [data-testid="stSidebarHeader"] button::after,
-    [data-testid="stSidebarCollapseButton"]::after {
-        content: "‹" !important;
-        font-size: 22px !important;
-        font-weight: 700 !important;
-        color: #9CA3AF !important;
-        line-height: 1 !important;
+    [data-testid="stSidebarCollapseButton"] button::before,
+    button[data-testid="stSidebarCollapseButton"]::before,
+    [data-testid="stSidebarHeader"] button::before {
+        content: "‹";
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1;
+        color: #FFFFFF;
+    }
+    [data-testid="stSidebarCollapseButton"] button::after,
+    button[data-testid="stSidebarCollapseButton"]::after,
+    [data-testid="stSidebarHeader"] button::after {
+        content: "Закрыть";
+        font-size: 12.5px;
+        font-weight: 700;
+        color: #FFFFFF;
     }
 
     /* ШТОРКА (TITANIUM BLACK) */
@@ -356,6 +414,106 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
+    /* ПОЛИРОВКА ДИЗАЙНА */
+    .stApp {
+        background-image: radial-gradient(1100px 420px at 85% -10%, rgba(239, 49, 36, 0.06), transparent 60%),
+                          linear-gradient(180deg, #F7F7F9 0%, #EEF0F4 100%) !important;
+    }
+    @keyframes alfa-fade-up {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .apple-kpi-bar, .apple-hero-banner, .apple-card-panel {
+        animation: alfa-fade-up 0.45s ease both;
+    }
+    .apple-kpi-bar {
+        border-radius: 20px;
+        box-shadow: 0 6px 24px rgba(17, 24, 39, 0.05);
+    }
+    .apple-hero-banner {
+        background: linear-gradient(100deg, #FFFFFF 0%, #FFF6F5 100%);
+        box-shadow: 0 8px 26px rgba(239, 49, 36, 0.08);
+    }
+    .apple-card-panel {
+        border-radius: 22px;
+        box-shadow: 0 10px 34px rgba(17, 24, 39, 0.06);
+    }
+    .apple-subbox, .apple-box-bank, .apple-box-ai, .product-apple-card {
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+    .apple-subbox:hover, .apple-box-bank:hover, .apple-box-ai:hover, .product-apple-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 22px rgba(17, 24, 39, 0.07);
+    }
+    .product-apple-card {
+        background: linear-gradient(100deg, #FFF8F7 0%, #F9FAFB 100%);
+    }
+    .apple-tag-pill { border-radius: 980px; padding: 5px 12px; }
+    .apple-risk-row, .apple-opp-row { border-radius: 14px; }
+
+    /* Основные действия: красные кнопки */
+    [class*="st-key-ask_"] button,
+    [class*="st-key-btn_prod_"] button {
+        background: linear-gradient(135deg, #EF3124 0%, #D42A1E 100%) !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        font-weight: 700 !important;
+        box-shadow: 0 6px 16px rgba(239, 49, 36, 0.28) !important;
+    }
+    [class*="st-key-ask_"] button:hover,
+    [class*="st-key-btn_prod_"] button:hover {
+        background: linear-gradient(135deg, #F24237 0%, #D42A1E 100%) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 10px 22px rgba(239, 49, 36, 0.36) !important;
+        color: #FFFFFF !important;
+    }
+    div.stButton > button:hover { transform: translateY(-1px); }
+
+    /* Поля ввода */
+    .stTextInput div[data-baseweb="input"] {
+        border: 1px solid #D1D5DB !important;
+        background: #FFFFFF !important;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+    }
+    .stTextInput div[data-baseweb="input"]:focus-within {
+        border-color: #EF3124 !important;
+        box-shadow: 0 0 0 3px rgba(239, 49, 36, 0.14) !important;
+    }
+
+    /* Чекбоксы и аудит-лог */
+    [data-testid="stCheckbox"] {
+        background: #F9FAFB;
+        border: 1px solid #E5E7EB;
+        border-radius: 12px;
+        padding: 8px 12px;
+        margin-bottom: 6px;
+    }
+    [data-testid="stCheckbox"]:hover { border-color: #EF3124; background: #FFF8F7; }
+    [data-testid="stExpander"] {
+        border: 1px solid #E5E7EB !important;
+        border-radius: 14px !important;
+        background: #FFFFFF !important;
+    }
+
+    /* Чат */
+    .chat-bubble-user {
+        background: linear-gradient(135deg, #EF3124 0%, #D42A1E 100%);
+        color: #FFFFFF;
+        box-shadow: 0 4px 14px rgba(239, 49, 36, 0.22);
+    }
+    .chat-bubble-ai-wrap {
+        border-left: 3px solid #EF3124;
+        box-shadow: 0 4px 16px rgba(17, 24, 39, 0.05);
+    }
+
+    /* Шторка: навигация и скролл */
+    [data-testid="stSidebar"] div[data-testid="stRadio"] label:hover {
+        background: rgba(255, 255, 255, 0.06) !important;
+        color: #FFFFFF !important;
+    }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 8px; }
+
     @media (max-width: 768px) {
         div.block-container {
             padding: 2.8rem 0.6rem 3rem 0.6rem !important;
@@ -570,6 +728,13 @@ if "applied_products" not in st.session_state:
     st.session_state.applied_products = set()
 if "last_api_call" not in st.session_state:
     st.session_state.last_api_call = 0.0
+
+# Streamlit удаляет состояние виджетов, которые не отрисованы в текущем прогоне
+# (например, при переходе на другую вкладку шторки). Переприсваивание делает значения
+# обычными данными сессии, поэтому введённый запрос и отмеченные шаги не сбрасываются.
+for _k in list(st.session_state.keys()):
+    if isinstance(_k, str) and _k.startswith(("inp_", "step_")):
+        st.session_state[_k] = st.session_state[_k]
 
 # ШТОРКА
 with st.sidebar:
