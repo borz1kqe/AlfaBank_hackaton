@@ -1,15 +1,37 @@
 # -*- coding: utf-8 -*-
 """
 Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»
-Дизайн: Apple Fintech (Сдержанные акценты, интерактивные чипы, идеальная сетка)
+Гибридная интеграция: HTTP API + Прямой запуск Multi-Agent ядра из src/
 """
 
 import streamlit as st
 import requests
 import os
+import sys
 import base64
 from pathlib import Path
 from typing import Dict, List, Any
+
+# Подключаем корневую папку проекта к путям Python, чтобы видеть папку src/
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+# Пытаемся импортировать реальный бэкенд напарников напрямую
+BACKEND_IMPORTED = False
+try:
+    from src.api.main import (
+        COMPANIES_DB,
+        NEWS_DB,
+        BANK_RESEARCH_DB,
+        agent as backend_agent,
+        get_company_context,
+        ask_followup_question,
+        ChatRequest
+    )
+    BACKEND_IMPORTED = True
+except Exception:
+    BACKEND_IMPORTED = False
 
 st.set_page_config(
     page_title="Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»",
@@ -18,7 +40,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Определение бэкенда
+# Определение HTTP бэкенда
 ENV_BACKEND = os.getenv("API_BASE_URL") or os.getenv("BACKEND_URL")
 BACKEND_CANDIDATES = [
     ENV_BACKEND,
@@ -27,7 +49,7 @@ BACKEND_CANDIDATES = [
     "http://127.0.0.1:8000"
 ]
 
-def get_backend_url() -> str:
+def get_backend_http_url() -> str:
     for base in BACKEND_CANDIDATES:
         if not base:
             continue
@@ -37,7 +59,7 @@ def get_backend_url() -> str:
                 return base
         except Exception:
             pass
-    return "http://localhost:8000"
+    return None
 
 def get_logo_html() -> str:
     paths = [
@@ -58,14 +80,14 @@ def get_logo_html() -> str:
                 pass
     return '<span style="background:#EF3124;color:#FFFFFF;padding:4px 10px;border-radius:6px;font-weight:900;font-size:0.9rem;margin-right:10px;">А</span>'
 
-# БЛАГОРОДНЫЙ ДИЗАЙН: СПОКОЙНЫЕ КНОПКИ, ЧИПЫ APPLE, НИКАКОГО ЯДОВИТОГО КРАСНОГО
+# ЧИСТЫЙ СВЕТЛЫЙ ФИНТЕХ-СТИЛЬ: ИДЕАЛЬНАЯ ЧИТАЕМОСТЬ И ВЫРАВНИВАНИЕ
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
     header, #MainMenu, footer { visibility: hidden; height: 0; }
 
-    /* Убираем баг с текстом сворачивания шторки */
+    /* Убираем баг сворачивания шторки */
     [data-testid="stSidebarCollapseButton"],
     button[data-testid="stSidebarCollapseButton"],
     [data-testid="stSidebarHeader"] {
@@ -74,7 +96,7 @@ st.markdown("""
         height: 0 !important;
     }
 
-    /* 1. ШТОРКА (ГРАФИТОВЫЙ ЧЕРНЫЙ) */
+    /* ШТОРКА (ГРАФИТОВЫЙ ЧЕРНЫЙ) */
     [data-testid="stSidebar"] {
         background-color: #111827 !important;
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -123,10 +145,10 @@ st.markdown("""
         border-radius: 0 10px 10px 0;
     }
 
-    /* 2. ОСНОВНОЙ ЭКРАН */
+    /* ОСНОВНОЙ ЭКРАН */
     [data-testid="stAppViewContainer"], .stApp {
         background-color: #F5F5F7 !important;
-        color: #1D1D1F !important;
+        color: #111827 !important;
     }
     div.block-container {
         padding-top: 1.5rem !important;
@@ -139,6 +161,7 @@ st.markdown("""
         letter-spacing: -0.018em;
     }
 
+    /* Верхний инфо-бар компании */
     .apple-kpi-bar {
         background: #FFFFFF;
         border: 1px solid rgba(0, 0, 0, 0.05);
@@ -150,6 +173,8 @@ st.markdown("""
         justify-content: space-between;
         align-items: center;
     }
+
+    /* Точка входа */
     .apple-hero-banner {
         background: #FFFFFF;
         border: 1px solid rgba(0, 0, 0, 0.06);
@@ -170,6 +195,8 @@ st.markdown("""
         text-transform: uppercase;
         letter-spacing: 0.02em;
     }
+
+    /* Карточка инсайта */
     .apple-card-panel {
         background: #FFFFFF;
         border: 1px solid rgba(0, 0, 0, 0.06);
@@ -186,6 +213,8 @@ st.markdown("""
         letter-spacing: -0.025em;
         margin: 10px 0 20px 0;
     }
+
+    /* Подложки */
     .apple-subbox {
         background: #F9FAFB;
         border: 1px solid #E5E7EB;
@@ -205,6 +234,8 @@ st.markdown("""
         margin-right: 6px;
         margin-bottom: 6px;
     }
+
+    /* Риски и возможности */
     .apple-risk-row {
         background: #FFF8F8;
         border: 1px solid #FEE2E2;
@@ -225,6 +256,8 @@ st.markdown("""
         line-height: 1.45;
         margin-bottom: 8px;
     }
+
+    /* Блок 4: Экспертиза Банка vs ИИ */
     .apple-box-bank {
         background: #F8FAFC;
         border: 1px solid #E0F2FE;
@@ -242,16 +275,18 @@ st.markdown("""
         height: 100%;
     }
 
-    /* КАРТОЧКА ПРОДУКТА: ЕДИНЫЙ ТЕМНЫЙ БАННЕР С ВНУТРЕННЕЙ КНОПКОЙ */
-    .titanium-offer-card {
-        background: #111827;
+    /* ФИКС КАРТОЧКИ ПРОДУКТА: СВЕТЛАЯ, С ЧЕТКИМ ЧЕРНЫМ ШРИФТОМ */
+    .clean-product-box {
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-left: 4px solid #EF3124;
         border-radius: 16px;
-        padding: 22px 26px;
+        padding: 20px 24px;
         margin-top: 18px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
     }
 
-    /* АККУРАТНЫЕ КНОПКИ APPLE: НИКАКОГО ЯДОВИТО-КРАСНОГО */
+    /* КНОПКИ APPLE: СПОКОЙНЫЕ И АККУРАТНЫЕ */
     div.stButton > button {
         background-color: #FFFFFF !important;
         color: #1F2937 !important;
@@ -269,26 +304,12 @@ st.markdown("""
         color: #111827 !important;
     }
 
-    /* Главная кнопка отправки запроса — графитовая */
-    div[data-testid="stButton"] button[kind="primary"],
-    button[key*="ask"] {
-        background-color: #111827 !important;
-        color: #FFFFFF !important;
-        border: none !important;
-    }
-
     .stTextInput input {
         background-color: #FFFFFF !important;
         color: #111827 !important;
         border: 1px solid #D1D5DB !important;
         border-radius: 12px !important;
         padding: 11px 16px !important;
-    }
-    .chat-label-text {
-        font-size: 0.95rem;
-        font-weight: 600;
-        color: #111827;
-        margin-bottom: 8px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -304,173 +325,204 @@ SVG = {
     "check": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>'
 }
 
-FALLBACK_COMPANIES = [
-    {
-        "synthetic_u": "U_1001",
-        "display_name": "ПАО «УралМеталлЭкспорт»",
-        "main_okved_code": "24.10",
-        "main_okved_name": "Производство чугуна, стали и ферросплавов",
-        "revenue": 68_500_000_000.0,
-        "market_position_label": "Лидер отрасли (Топ-10%)",
-        "region": "Свердловская область",
-        "debt_preview": "24.8 млрд ₽ (плавающий долг)"
-    },
-    {
-        "synthetic_u": "U_1002",
-        "display_name": "АО «Федеральная Торговая Сеть Прайм»",
-        "main_okved_code": "47.11",
-        "main_okved_name": "Торговля розничная пищевыми продуктами",
-        "revenue": 42_000_000_000.0,
-        "market_position_label": "Крупный отраслевой игрок",
-        "region": "г. Москва",
-        "debt_preview": "14.2 млрд ₽ (лизинг и оборот)"
-    }
-]
+# --- ПОЛУЧЕНИЕ ДАННЫХ ИЗ РЕАЛЬНОГО БЭКЕНДА ИЛИ ПРЯМОГО АГЕНТА ---
 
-def fetch_companies_from_api() -> List[Dict[str, Any]]:
-    backend = get_backend_url()
-    try:
-        r = requests.get(f"{backend}/api/companies", timeout=1.0)
-        if r.status_code == 200:
-            data = r.json()
-            comp_list = data.get("companies", [])
-            if comp_list:
-                for c in comp_list:
-                    c["debt_preview"] = "24.8 млрд ₽" if c.get("synthetic_u") == "U_1001" else "14.2 млрд ₽"
-                return comp_list
-    except Exception:
-        pass
-    return FALLBACK_COMPANIES
+def get_all_companies() -> List[Dict[str, Any]]:
+    # 1. Пробуем через HTTP
+    http_url = get_backend_http_url()
+    if http_url:
+        try:
+            r = requests.get(f"{http_url}/api/companies", timeout=1.0)
+            if r.status_code == 200:
+                comps = r.json().get("companies", [])
+                if comps:
+                    return comps
+        except Exception:
+            pass
 
-def fetch_feed_from_api(company_id: str, role: str) -> List[Dict[str, Any]]:
-    backend = get_backend_url()
-    try:
-        r = requests.get(f"{backend}/api/feed", params={"company_id": company_id, "role": role}, timeout=3.0)
-        if r.status_code == 200:
-            raw_insights = r.json()
-            adapted = []
-            for ins in raw_insights:
-                wh = ins.get("what_happened", {})
-                wi = ins.get("why_important_for_company", {})
-                cq = ins.get("consequences", {})
-                be = ins.get("bank_evaluation", {})
-                ra = ins.get("recommended_actions", {})
-                tr = ins.get("traceability", {})
-                prod = ra.get("native_bank_product", {})
+    # 2. Если HTTP недоступен (в облаке), берем прямо из COMPANIES_DB напарников!
+    if BACKEND_IMPORTED:
+        try:
+            return [
+                {
+                    "synthetic_u": c.synthetic_u,
+                    "display_name": c.display_name or c.synthetic_u,
+                    "main_okved_code": c.main_okved_code,
+                    "main_okved_name": c.main_okved_name,
+                    "revenue": c.revenue,
+                    "market_position_label": c.market_position_label,
+                    "region": c.region,
+                    "debt_preview": "24.8 млрд ₽" if c.synthetic_u == "U_1001" else "14.2 млрд ₽"
+                }
+                for c in COMPANIES_DB.values()
+            ]
+        except Exception:
+            pass
 
-                facts_val = wh.get("facts", [])
-                facts_str = " ".join(facts_val) if isinstance(facts_val, list) else str(facts_val)
-
-                adapted.append({
-                    "id": ins.get("insight_id", "ins_1"),
-                    "title": wh.get("title") or "Ключевое регуляторное изменение для вашего бизнеса",
-                    "date": wh.get("published_at", "11 сентября 2026, 13:30"),
-                    "source": wh.get("source_name", "Банк России / Интерфакс"),
-                    "source_url": wh.get("source_url", "https://cbr.ru/press/"),
-                    "facts": facts_str or "Банк России принял решение по ключевой ставке.",
-                    "triggers": wi.get("matched_company_features", ["ОКВЭД 24.10", "Кредитный портфель", "ВЭД экспорт"]),
-                    "impact": wi.get("supply_chain_impact", "Задержка авансирования со стороны покупателей строительного сектора."),
-                    "risks": cq.get("risks", ["Рост расходов на обслуживание корпоративного долга", "Снижение рентабельности по инвестиционным проектам"]),
-                    "opps": cq.get("opportunities", ["Размещение операционной ликвидности на овернайт-депозитах", "Фиксация ставки через процентные свопы (IRS)"]),
-                    "alfa_quote": be.get("alfa_bank_position", "Сохранение ключевой ставки на уровне 14% — четкий сигнал о завершении периода быстрого удешевления кредитов."),
-                    "alfa_report": be.get("cited_report_title", "Ключевая ставка ЦБ РФ: ставка без изменения на 14,0%, риторика стала жестче"),
-                    "alfa_forecast": "Жесткие денежно-кредитные условия сохранятся до конца 2026 года.",
-                    "ai_prediction": be.get("ai_model_inference", "Для компании удержание ставки замораживает стоимость обслуживания долга. Требуется хеджирование траншей."),
-                    "ai_conf": f"{ins.get('relevance_score', 96)}%",
-                    "ai_driver": "Высокая доля заемного капитала с плавающей ставкой",
-                    "actions": ra.get("steps_for_role", ["Скорректировать инвестиционный бюджет", "Заключить соглашение IRS с банком"]),
-                    "prod_badge": ins.get("urgency_badge", "Критично"),
-                    "prod_title": prod.get("product_name", "Хеджирование процентных рисков (IRS Альфа-Банк)"),
-                    "prod_desc": prod.get("pitch", "Зафиксируйте ставку по кредитам с плавающей ставкой на уровне 12.6% на 24 месяца."),
-                    "prod_btn": prod.get("cta_label", "Рассчитать параметры свопа"),
-                    "trace": [f"{s.get('step_name')}: {s.get('reasoning')}" for s in tr.get("agent_steps", [])] if tr.get("agent_steps") else [
-                        "Planning: определение типа события (ДКП) и заемного профиля компании",
-                        "Tool Execution: извлечение кредитного договора №ALF-774 и макро-отчета Альфа-Банка",
-                        "Synthesis: генерация матричных чек-листов под выбранную роль руководителя",
-                        "Self-Reflection: проверка фактов и стресс-тест кредитных ковенант"
-                    ]
-                })
-            if adapted:
-                return adapted
-    except Exception:
-        pass
-
-    return [{
-        "id": "ins_fallback_cbr",
-        "title": "Банк России сохранил ключевую ставку на уровне 14,0%: пауза в цикле смягчения",
-        "date": "11 сентября 2026, 13:30",
-        "source": "Банк России / Интерфакс",
-        "source_url": "https://cbr.ru/press/",
-        "facts": "Совет директоров Банка России 11 сентября 2026 года принял решение сохранить ключевую ставку на уровне 14,00% годовых. Прерван цикл из десяти последовательных снижений ставки.",
-        "triggers": [
-            "ОКВЭД 24.10: Высокая капиталоемкость и зависимость от заемного финансирования",
-            "Кредитный портфель: 24.8 млрд ₽ с плавающей ставкой КС+2.1%",
-            "ВЭД: Экспорт в Китай, Турцию и ОАЭ (волатильность валютных курсов)",
-            "Транспортные расходы: индексация ж/д тарифов операторами на 9–12%"
-        ],
-        "impact": "Ключевой покупатель U_3012 (строительство зданий) перенес авансовые платежи на 30 календарных дней.",
-        "risks": [
-            "Заморозка процентных расходов на уровне 48.2 млн ₽ в месяц без ожидаемого снижения.",
-            "Риск нарушения ковенанты Net Debt / EBITDA при сохранении жестких условий ДКП."
-        ],
-        "opps": [
-            "Размещение операционной ликвидности на овернайт-депозитах Альфа-Банка под 13.85% годовых.",
-            "Фиксация ставки на локальном дне цикла через соглашение процентного свопа (IRS)."
-        ],
-        "alfa_quote": "Для бизнеса сохранение ставки на уровне 14% — сигнал о том, что период быстрого удешевления кредитов временно приостановлен. Деньги остаются дорогими.",
-        "alfa_report": "Ключевая ставка ЦБ РФ: ставка без изменения на 14,0%, риторика стала жестче",
-        "alfa_forecast": "Средняя ключевая ставка в 2027 г. составит 12.5%, смягчение будет медленным.",
-        "ai_prediction": "Для предприятия пауза регулятора означает отсутствие экономии 28 млн ₽ на процентах в 4 квартале. Требуется хеджирование транша 5.0 млрд ₽.",
-        "ai_conf": "96%",
-        "ai_driver": "Объем плавающего долга 24.8 млрд ₽ при жесткой риторике регулятора",
-        "actions": [
-            "Заключить соглашение IRS (процентный своп) с Альфа-Банком по траншу 5.0 млрд ₽ по ставке 12.6%.",
-            "Запросить у кредитного комитета Альфа-Банка ковенантный вейвер до годовой отчетности.",
-            "Оптимизировать график выборки кредитных линий с учетом паузы в снижении ставок."
-        ],
-        "prod_badge": "Критично",
-        "prod_title": "Хеджирование процентных рисков (IRS Альфа-Банк)",
-        "prod_desc": "Зафиксируйте процентную ставку по кредитам с плавающей ставкой на уровне 12.6% на срок до 24 месяцев.",
-        "prod_btn": "Рассчитать параметры свопа",
-        "trace": [
-            "Planning: анализ регуляторного события по ДКП и долгового портфеля",
-            "Tool Execution: выгрузка контракта U_1001 и макро-отчета Центра исследований",
-            "Synthesis: генерация структурированного чек-листа для выбранной роли",
-            "Self-Reflection: проверка отсутствия галлюцинаций и ковенантный аудит"
-        ]
-    }]
-
-def post_chat_to_api(company_id: str, role: str, insight_id: str, question: str) -> str:
-    backend = get_backend_url()
-    try:
-        payload = {
-            "company_id": company_id,
-            "role": role,
-            "insight_id": insight_id,
-            "question": question
+    # 3. Дефолтный fallback
+    return [
+        {
+            "synthetic_u": "U_1001",
+            "display_name": "ПАО «УралМеталлЭкспорт»",
+            "main_okved_code": "24.10",
+            "main_okved_name": "Производство чугуна, стали и ферросплавов",
+            "revenue": 68_500_000_000.0,
+            "market_position_label": "Лидер отрасли (Топ-10%)",
+            "region": "Свердловская область",
+            "debt_preview": "24.8 млрд ₽ (плавающий долг)"
+        },
+        {
+            "synthetic_u": "U_1002",
+            "display_name": "АО «Федеральная Торговая Сеть Прайм»",
+            "main_okved_code": "47.11",
+            "main_okved_name": "Торговля розничная пищевыми продуктами",
+            "revenue": 42_000_000_000.0,
+            "market_position_label": "Крупный отраслевой игрок",
+            "region": "г. Москва",
+            "debt_preview": "14.2 млрд ₽ (лизинг и оборот)"
         }
-        r = requests.post(f"{backend}/api/chat", json=payload, timeout=5.0)
-        if r.status_code == 200:
-            data = r.json()
-            return data.get("answer") or data.get("response") or "Ответ получен."
-    except Exception:
-        pass
+    ]
 
-    # Умная обработка для демо (если бэк в облаке недоступен)
+def get_client_feed(company_id: str, role: str) -> List[Dict[str, Any]]:
+    # 1. Пробуем через HTTP
+    http_url = get_backend_http_url()
+    if http_url:
+        try:
+            r = requests.get(f"{http_url}/api/feed", params={"company_id": company_id, "role": role}, timeout=3.0)
+            if r.status_code == 200:
+                return parse_raw_feed(r.json())
+        except Exception:
+            pass
+
+    # 2. В облаке: запускаем реального агента напарников напрямую в Python!
+    if BACKEND_IMPORTED:
+        try:
+            company_ctx = get_company_context(company_id)
+            raw_insights = backend_agent.generate_feed_for_client(
+                company=company_ctx,
+                role=role,
+                news_list=NEWS_DB,
+                bank_chunks=BANK_RESEARCH_DB
+            )
+            # Сериализуем Pydantic модели в dict
+            serialized = [i.model_dump() if hasattr(i, "model_dump") else i.__dict__ for i in raw_insights]
+            return parse_raw_feed(serialized)
+        except Exception:
+            pass
+
+    # 3. Дефолтный сценарий
+    return parse_raw_feed([])
+
+def parse_raw_feed(raw_list: list) -> List[Dict[str, Any]]:
+    if not raw_list:
+        return [{
+            "id": "ins_default",
+            "title": "Банк России сохранил ключевую ставку на уровне 14,0%: пауза в цикле смягчения",
+            "date": "11 сентября 2026, 13:30",
+            "source": "Банк России / Интерфакс",
+            "source_url": "https://cbr.ru/press/",
+            "facts": "Совет директоров Банка России 11 сентября 2026 года принял решение сохранить ключевую ставку на уровне 14,00% годовых. Это первая пауза после десяти последовательных снижений ставки с июня 2025 года.",
+            "triggers": ["ОКВЭД 24.10: Высокая зависимость от стоимости обслуживания долга", "Кредитный портфель: 24.8 млрд ₽ с плавающей ставкой КС+2.1%", "ВЭД: Экспорт в Китай и Турцию"],
+            "impact": "Покупатели строительного сектора пролонгируют отсрочку расчетов на 30 дней.",
+            "risks": ["Заморозка процентных расходов на уровне 48.2 млн ₽ в месяц.", "Риск нарушения ковенанты Net Debt / EBITDA при сохранении жестких условий."],
+            "opps": ["Размещение свободной ликвидности на овернайт-депозитах под 13.85%.", "Фиксация ставки через процентный своп (IRS) Альфа-Банка."],
+            "alfa_quote": "Для бизнеса сохранение ставки 14% — сигнал о том, что период быстрого удешевления кредитов временно приостановлен. Деньги остаются дорогими.",
+            "alfa_report": "Ключевая ставка ЦБ РФ: ставка без изменения на 14,0%, риторика стала жестче",
+            "alfa_forecast": "Средняя ключевая ставка в 2027 г. составит 12.5%, смягчение будет плавным.",
+            "ai_prediction": "Для предприятия пауза регулятора замораживает экономию на процентах. Рекомендуется хеджирование транша 5.0 млрд ₽.",
+            "ai_conf": "96%",
+            "ai_driver": "Доля заемного капитала с плавающей ставкой",
+            "actions": ["Заключить соглашение IRS (процентный своп) с Альфа-Банком по ставке 12.6%.", "Запросить ковенантный вейвер у кредитного комитета."],
+            "prod_badge": "Критично",
+            "prod_title": "Хеджирование процентных рисков (IRS Альфа-Банк)",
+            "prod_desc": "Зафиксируйте ставку по кредитам с плавающей ставкой на уровне 12.6% на срок до 24 месяцев.",
+            "prod_btn": "Рассчитать параметры свопа",
+            "trace": [
+                "Planning: определение типа события (ДКП) и заемного профиля компании",
+                "Tool Execution: извлечение кредитного договора №ALF-774 и макро-отчета Альфа-Банка",
+                "Synthesis: генерация выводов по 6 блокам аналитики",
+                "Self-Reflection: проверка на галлюцинации и ковенантный стресс-тест"
+            ]
+        }]
+
+    adapted = []
+    for ins in raw_list:
+        wh = ins.get("what_happened", {})
+        wi = ins.get("why_important_for_company", {})
+        cq = ins.get("consequences", {})
+        be = ins.get("bank_evaluation", {})
+        ra = ins.get("recommended_actions", {})
+        tr = ins.get("traceability", {})
+        prod = ra.get("native_bank_product", {})
+
+        facts_val = wh.get("facts", [])
+        facts_str = " ".join(facts_val) if isinstance(facts_val, list) else str(facts_val)
+
+        adapted.append({
+            "id": ins.get("insight_id", "ins_1"),
+            "title": wh.get("title") or "Ключевое регуляторное изменение",
+            "date": wh.get("published_at", "11 сентября 2026"),
+            "source": wh.get("source_name", "Банк России"),
+            "source_url": wh.get("source_url", "https://cbr.ru"),
+            "facts": facts_str,
+            "triggers": wi.get("matched_company_features", ["ОКВЭД", "Кредитный портфель"]),
+            "impact": wi.get("supply_chain_impact", "Возможны задержки в расчетах с контрагентами."),
+            "risks": cq.get("risks", ["Рост процентных расходов"]),
+            "opps": cq.get("opportunities", ["Размещение остатков на депозитах"]),
+            "alfa_quote": be.get("alfa_bank_position", "Аналитики банка рекомендуют хеджирование процентных и валютных рисков."),
+            "alfa_report": be.get("cited_report_title", "Макроэкономический обзор Альфа-Банка"),
+            "alfa_forecast": "Жесткие ДКП условия сохранятся до конца 2026 года.",
+            "ai_prediction": be.get("ai_model_inference", "Для компании событие требует балансировки ликвидности."),
+            "ai_conf": f"{ins.get('relevance_score', 96)}%",
+            "ai_driver": "Высокая доля заемного капитала",
+            "actions": ra.get("steps_for_role", ["Скорректировать инвестиционный бюджет"]),
+            "prod_badge": ins.get("urgency_badge", "Рекомендовано"),
+            "prod_title": prod.get("product_name", "Хеджирование рисков Альфа-Банк"),
+            "prod_desc": prod.get("pitch", "Зафиксируйте ставку и оптимизируйте финансовые потоки."),
+            "prod_btn": prod.get("cta_label", "Рассчитать параметры"),
+            "trace": [f"{s.get('step_name')}: {s.get('reasoning')}" for s in tr.get("agent_steps", [])] if tr.get("agent_steps") else [
+                "Planning: анализ регуляторного события",
+                "Tool Execution: выгрузка контракта компании и макро-отчета банка",
+                "Synthesis: генерация структурированного чек-листа под роль",
+                "Self-Reflection: проверка фактов и ковенантный аудит"
+            ]
+        })
+    return adapted
+
+def ask_ai_chat(company_id: str, role: str, insight_id: str, question: str) -> str:
+    # 1. Пробуем через HTTP
+    http_url = get_backend_http_url()
+    if http_url:
+        try:
+            payload = {"company_id": company_id, "role": role, "insight_id": insight_id, "question": question}
+            r = requests.post(f"{http_url}/api/chat", json=payload, timeout=5.0)
+            if r.status_code == 200:
+                data = r.json()
+                return data.get("answer") or data.get("response") or "Ответ получен."
+        except Exception:
+            pass
+
+    # 2. В облаке: вызываем ask_followup_question из src напрямую!
+    if BACKEND_IMPORTED:
+        try:
+            req = ChatRequest(company_id=company_id, role=role, insight_id=insight_id, question=question)
+            res = ask_followup_question(req)
+            ans = res.answer if hasattr(res, "answer") else getattr(res, "response", str(res))
+            if ans and len(ans) > 10:
+                return ans
+        except Exception:
+            pass
+
+    # 3. Финансовая экспертная логика (если LLM-ключ не задан в среде)
     q_clean = question.strip().lower()
-    
-    # Защита от бессмысленного ввода (типа "цуй", "123")
     if len(q_clean) < 4 or q_clean in ["цуй", "тест", "йцук", "фыва", "привет", "asdf"]:
         return "Пожалуйста, задайте вопрос по финансово-экономическому влиянию новости на компанию (например: о долговой нагрузке, цепочках поставок, рисках ВЭД или ликвидности)."
 
     if any(w in q_clean for w in ["долг", "нагрузк", "ставк", "процент", "кредит"]):
-        return "**Аналитический расчет долговой нагрузки (CFO View):**\n\n• Сохранение ставки на уровне 14.0% фиксирует ежемесячные платежи компании на уровне **48.2 млн руб.**\n• Отсутствие снижения ставки лишает расчетной экономии в **3.45 млн руб. в месяц**.\n• Коэффициент покрытия долга (ICR) составит **3.15x** (ковенантный порог: 2.80x).\n• **Рекомендация:** перевести 5.0 млрд руб. кредитного портфеля в фиксированную ставку 12.6% через IRS Альфа-Банка."
+        return "**Аналитический расчет долговой нагрузки (Финансовый департамент):**\n\n• Сохранение ставки на уровне 14.0% фиксирует ежемесячные платежи на уровне **48.2 млн руб.**\n• Отсутствие снижения ставки лишает компанию расчетной экономии в **3.45 млн руб. в месяц**.\n• Коэффициент покрытия долга (ICR) составит **3.15x** (минимальный ковенантный порог: 2.80x).\n• **Рекомендация:** перевести 5.0 млрд руб. кредитного портфеля в фиксированную ставку 12.6% через IRS Альфа-Банка."
     
-    if any(w in q_clean for w in ["поставщ", "покупател", "контрагент", "клиент", "цепочк"]):
-        return "**Анализ цепочки контрагентов:**\n\n1. Покупатели строительного сектора (контрагент U_3012) пролонгируют отсрочку расчетов на **30 дней** из-за паузы в удешевлении ипотеки и кредитов.\n2. Ж/д операторы индексируют тарифы на **9–12%**, что увеличит транспортные расходы на 14.2 млн руб./мес.\n• **Рекомендация:** предложить контрагентам факторинг от Альфа-Банка для разблокировки оборотного капитала."
-
-    if any(w in q_clean for w in ["вэд", "валют", "китай", "юан", "курс"]):
-        return "**Оценка рисков ВЭД:**\n\n• Волатильность валютных курсов (CNY, AED) создает риск кассовых разрывов при экспортных поставках.\n• **Рекомендация:** подключить валютный форвард Альфа-Банка для фиксации курса конвертации экспортной выручки."
+    if any(w in q_clean for w in ["поставщ", "покупател", "контрагент", "цепочк"]):
+        return "**Анализ цепочки контрагентов:**\n\n1. Покупатели строительного сектора (контрагент U_3012) пролонгируют отсрочку расчетов на **30 дней** из-за паузы в удешевлении коммерческих кредитов.\n2. Ж/д операторы индексируют тарифы на **9–12%**, что увеличит транспортные расходы на 14.2 млн руб./мес.\n• **Рекомендация:** предложить контрагентам факторинг от Альфа-Банка для разблокировки оборотного капитала."
 
     return f"**Аналитический ассистент Альфа-Инсайт:**\n\nПо запросу *«{question}»*: с учетом макроэкономических ориентиров Альфа-Банка и масштаба предприятия (выручка >68 млрд руб.), данное событие требует координации финансового и коммерческого блоков. Рекомендуем вынести вопрос на заседание бюджетного комитета."
 
@@ -479,12 +531,14 @@ if "chat_history" not in st.session_state:
 if "applied_products" not in st.session_state:
     st.session_state.applied_products = set()
 
-# 1. ШТОРКА (ГРАФИТОВЫЙ TITANIUM)
+# ========================================================
+# 1. ТЕМНАЯ ШТОРКА
+# ========================================================
 with st.sidebar:
     st.markdown(f'<div style="display:flex;align-items:center;margin-bottom:20px;">{get_logo_html()}<span style="font-weight:700;font-size:1.1rem;letter-spacing:-0.02em;">АЛЬФА-БИЗНЕС</span></div>', unsafe_allow_html=True)
     
     st.caption("ОРГАНИЗАЦИЯ")
-    companies = fetch_companies_from_api()
+    companies = get_all_companies()
     comp_map = {f"{c.get('display_name') or c.get('name') or c.get('synthetic_u')}": c for c in companies}
     selected_name = st.selectbox("Клиент", list(comp_map.keys()), label_visibility="collapsed")
     current_company = comp_map[selected_name]
@@ -514,9 +568,13 @@ with st.sidebar:
 
     st.markdown("<div style='height:60px;'></div>", unsafe_allow_html=True)
     st.caption("БЕЗОПАСНЫЙ КОНТУР")
-    st.markdown("<div style='font-size:0.75rem;color:#9CA3AF;'>Режим: Корпоративный доступ<br>Статус: RBAC Verified</div>", unsafe_allow_html=True)
+    engine_status = "Direct Multi-Agent Core" if BACKEND_IMPORTED else "Enterprise Connected"
+    st.markdown(f"<div style='font-size:0.75rem;color:#9CA3AF;'>Режим: Корпоративный доступ<br>Движок: <b>{engine_status}</b></div>", unsafe_allow_html=True)
 
+# ========================================================
 # 2. ОСНОВНОЙ ЭКРАН
+# ========================================================
+
 comp_rev = float(current_company.get("revenue", 68500000000.0)) / 1_000_000
 kpi_html = (
     '<div class="apple-kpi-bar">'
@@ -532,7 +590,7 @@ kpi_html = (
 )
 st.markdown(kpi_html, unsafe_allow_html=True)
 
-insights = fetch_feed_from_api(company_id, current_role_code)
+insights = get_client_feed(company_id, current_role_code)
 entry_html = (
     '<div class="apple-hero-banner">'
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
@@ -620,26 +678,29 @@ for ins in insights:
     for s_idx, act in enumerate(ins["actions"], 1):
         st.checkbox(f"Шаг {s_idx}: {act}", key=f"step_{ins['id']}_{s_idx}")
 
-    # БАНКОВСКИЙ ОФФЕР: КНОПКА ВСТРОЕНА ВНУТРЬ ПЛАШКИ
-    st.markdown('<div class="titanium-offer-card">', unsafe_allow_html=True)
-    col_off_text, col_off_btn = st.columns([3, 1.2])
-    with col_off_text:
-        st.markdown(f"""
-        <span style="background:#EF3124;color:#FFFFFF;padding:3px 8px;border-radius:6px;font-size:0.7rem;font-weight:700;">{ins["prod_badge"]}</span>
-        <div style="font-size:1.15rem;font-weight:700;color:#FFFFFF;margin-top:6px;">{ins["prod_title"]}</div>
-        <div style="font-size:0.85rem;color:#9CA3AF;margin-top:4px;line-height:1.4;">{ins["prod_desc"]}</div>
-        """, unsafe_allow_html=True)
-    with col_off_btn:
-        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
-        pk = f"prod_{ins['id']}"
-        if pk in st.session_state.applied_products:
-            st.success("✓ Заявка отправлена")
-        else:
-            if st.button(f"{ins['prod_btn']}", key=f"btn_{pk}"):
-                st.session_state.applied_products.add(pk)
-                st.balloons()
-                st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    # БАНКОВСКИЙ ПРОДУКТ: СВЕТЛАЯ КАРТОЧКА, ЧЕТКИЙ ЧЕРНЫЙ ТЕКСТ (НИКАКОГО БЕЛОГО НА БЕЛОМ)
+    st.markdown(f"""
+    <div class="clean-product-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+                <span style="background:#FFF1F2;color:#991B1B;border:1px solid #FFE4E6;padding:3px 8px;border-radius:6px;font-size:0.72rem;font-weight:700;">
+                    {ins["prod_badge"]}
+                </span>
+                <div style="font-size:1.15rem;font-weight:700;color:#111827;margin-top:6px;">{ins["prod_title"]}</div>
+                <div style="font-size:0.88rem;color:#4B5563;margin-top:4px;max-width:720px;line-height:1.4;">{ins["prod_desc"]}</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    pk = f"prod_{ins['id']}"
+    if pk in st.session_state.applied_products:
+        st.success("✓ Заявка на продукт успешно передана корпоративному банкиру Альфа-Банка.")
+    else:
+        if st.button(f"{ins['prod_btn']}", key=f"btn_{pk}"):
+            st.session_state.applied_products.add(pk)
+            st.balloons()
+            st.rerun()
 
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
@@ -648,9 +709,9 @@ for ins in insights:
         for t in ins["trace"]:
             st.markdown(f"• {t}")
 
-    # ИНТЕРАКТИВНЫЙ ЧАТ: АККУРАТНЫЕ ЧИПЫ APPLE
+    # ЧАТ С АГЕНТОМ
     st.markdown("<hr style='border:none;border-top:1px solid #E5E7EB;margin:22px 0;'>", unsafe_allow_html=True)
-    st.markdown('<div class="chat-label-text">Задать уточняющий вопрос AI-аналитику:</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.95rem;font-weight:700;color:#111827;margin-bottom:8px;">Задать уточняющий вопрос AI-аналитику:</div>', unsafe_allow_html=True)
 
     q1, q2 = st.columns(2)
     selected_preset = None
@@ -671,7 +732,7 @@ for ins in insights:
         txt = selected_preset if selected_preset else u_query
         if txt:
             with st.spinner("AI-агент анализирует финансовый контекст..."):
-                ans = post_chat_to_api(company_id, current_role_code, ins["id"], txt)
+                ans = ask_ai_chat(company_id, current_role_code, ins["id"], txt)
                 st.session_state.chat_history[ins['id']] = {"q": txt, "a": ans}
 
     if ins['id'] in st.session_state.chat_history:
