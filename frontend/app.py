@@ -610,6 +610,11 @@ st.markdown("""
     }
     [data-testid="stDownloadButton"] button:hover { border-color: #EF3124 !important; color: #EF3124 !important; background: #FFF8F7 !important; }
 
+    /* Кнопки в тёмной шторке: читаемый текст */
+    [data-testid="stSidebar"] div.stButton > button,
+    [data-testid="stSidebar"] div.stButton > button p,
+    [data-testid="stSidebar"] div.stButton > button span { color: #111827 !important; }
+
     @media (max-width: 768px) {
         div.block-container {
             padding: 4.6rem 0.6rem 3rem 0.6rem !important;
@@ -1248,7 +1253,7 @@ with st.sidebar:
     if st.button("Обновить аналитику", key="refresh_feed"):
         _feed_store().clear()
         st.rerun()
-    with st.expander("Диагностика ИИ"):
+    if st.toggle("Диагностика ИИ", key="diag_on"):
         if BACKEND_OK:
             _llm = BACKEND_AGENT.llm
             st.write({
