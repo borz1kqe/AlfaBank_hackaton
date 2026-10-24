@@ -1,840 +1,553 @@
-# frontend/app.py
-import os
+# -*- coding: utf-8 -*-
+"""
+Альфа-Инсайт: Интернет-банк «Альфа-Бизнес»
+Сквозная интеграция с Multi-Agent FastAPI Backend (Роли 1 и 2)
+"""
+
+import streamlit as st
+import requests
 import base64
 from pathlib import Path
-import requests
-import streamlit as st
-
-from mock_data import (
-    COMPANIES,
-    ROLES,
-    get_personalized_feed,
-    generate_mock_chat_answer,
-    analyze_custom_news_Realtime,
-)
+from typing import Dict, List, Any
 
 st.set_page_config(
-    page_title="Альфа-Бизнес — Аналитика",
-    page_icon="alfa-bank.svg" if Path("alfa-bank.svg").exists() else None,
+    page_title="Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»",
+    page_icon="https://alfabank.servicecdn.ru/icons/corp/favicons/favicon.ico",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed"
 )
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
-BASE_DIR = Path(__file__).parent
+# Адреса бэкенда напарников
+API_URLS = [
+    "http://backend:8000/api",
+    "http://localhost:8000/api",
+    "http://127.0.0.1:8000/api"
+]
 
+def get_api_base() -> str:
+    for base in API_URLS:
+        try:
+            r = requests.get(f"{base}/companies", timeout=0.8)
+            if r.status_code == 200:
+                return base
+        except Exception:
+            pass
+    return "http://localhost:8000/api"
 
-def load_svg_base64(filename: str) -> str:
-    for candidate in [BASE_DIR / filename, BASE_DIR / "logos" / filename]:
-        if candidate.exists():
-            data = candidate.read_bytes()
-            return f"data:image/svg+xml;base64,{base64.b64encode(data).decode('utf-8')}"
-    return ""
+def get_logo_html() -> str:
+    paths = [
+        Path("logos/alfa-bank-business.svg"),
+        Path("frontend/logos/alfa-bank-business.svg"),
+        Path("alfa-bank-business.svg"),
+        Path("alfa-bank.svg")
+    ]
+    for p in paths:
+        if p.exists():
+            try:
+                data = p.read_text(encoding="utf-8")
+                b64 = base64.b64encode(data.encode("utf-8")).decode("utf-8")
+                return f'<img src="data:image/svg+xml;base64,{b64}" height="28" style="vertical-align:middle;margin-right:12px;" />'
+            except Exception:
+                pass
+    return '<span style="background:#EF3124;color:#FFFFFF;padding:4px 10px;border-radius:6px;font-weight:900;font-size:0.9rem;margin-right:10px;">А</span>'
 
-
-ALFA_LOGO_B64 = load_svg_base64("alfa-bank.svg")
-ALFA_BIZ_LOGO_B64 = load_svg_base64("alfa-bank-business.svg")
-
-if "selected_company_id" not in st.session_state:
-    st.session_state.selected_company_id = COMPANIES[0]["company_id"]
-if "selected_role" not in st.session_state:
-    st.session_state.selected_role = "CFO"
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = {}
-if "custom_insights" not in st.session_state:
-    st.session_state.custom_insights = []
-
-
-def api_get_companies():
-    try:
-        resp = requests.get(f"{BACKEND_URL}/api/companies", timeout=1.0)
-        if resp.status_code == 200:
-            data = resp.json()
-            if isinstance(data, list) and len(data) > 0:
-                return data
-    except Exception:
-        pass
-    return COMPANIES
-
-
-def api_get_feed(company_id: str, role: str):
-    try:
-        resp = requests.get(
-            f"{BACKEND_URL}/api/feed",
-            params={"company_id": company_id, "role": role},
-            timeout=1.8,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            if isinstance(data, list) and len(data) > 0:
-                return data
-    except Exception:
-        pass
-    return get_personalized_feed(company_id, role)
-
-
-def api_post_chat(company_id: str, role: str, insight_id: str, question: str):
-    try:
-        resp = requests.post(
-            f"{BACKEND_URL}/api/chat",
-            json={
-                "company_id": company_id,
-                "role": role,
-                "insight_id": insight_id,
-                "question": question,
-            },
-            timeout=3.0,
-        )
-        if resp.status_code == 200:
-            return resp.json()
-    except Exception:
-        pass
-    return generate_mock_chat_answer(company_id, role, insight_id, question)
-
-
-st.markdown(
-    """
+st.markdown("""
 <style>
-    :root {
-        --font-sf: system-ui, -apple-system, BlinkMacSystemFont, ui-sans-serif, sans-serif;
+    [data-testid="stAppViewContainer"], .stApp {
+        background-color: #F8F9FA !important;
+        color: #111827 !important;
     }
-
-    header[data-testid="stHeader"] {
-        background: transparent !important;
-    }
-    .stDeployButton, [data-testid="stAppDeployButton"], #MainMenu {
-        display: none !important;
-    }
-    [data-testid="collapsedControl"], [data-testid="stSidebarCollapseButton"] {
-        visibility: visible !important;
-        display: flex !important;
-    }
-
-    html, body, .stApp, div:not([data-testid="stIconMaterial"]), p, h1, h2, h3, h4, label, button, input, textarea, li, blockquote, svg text {
-        font-family: var(--font-sf) !important;
-        -webkit-font-smoothing: antialiased !important;
-        letter-spacing: -0.016em;
-    }
-    span:not([data-testid="stIconMaterial"]):not(.material-symbols-rounded) {
-        font-family: var(--font-sf) !important;
-        letter-spacing: -0.016em;
-    }
-    [data-testid="stIconMaterial"], .material-symbols-rounded {
-        font-family: "Material Symbols Rounded" !important;
-    }
-
-    /* Спокойный архитектурный фон без "ИИ-свечений" */
-    html, body, .stApp,
-    [data-testid="stAppViewContainer"],
-    [data-testid="stMain"],
-    section.main {
-        background-color: #E6E9EF !important;
-        color: #11141A;
-    }
-
-    .block-container {
+    header, #MainMenu, footer { visibility: hidden; height: 0; }
+    div.block-container {
         padding-top: 1.2rem !important;
         padding-bottom: 4rem !important;
-        padding-left: 2.4rem !important;
-        padding-right: 2.4rem !important;
-        max-width: 1440px !important;
+        max-width: 1140px !important;
     }
-
-    /* Левая шторка: матовое темное стекло */
-    section[data-testid="stSidebar"] {
-        background: rgba(17, 19, 24, 0.94) !important;
-        backdrop-filter: blur(28px) saturate(180%) !important;
-        -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
-    }
-    section[data-testid="stSidebar"] p,
-    section[data-testid="stSidebar"] span:not([data-testid="stIconMaterial"]),
-    section[data-testid="stSidebar"] label {
-        color: #F1F5F9 !important;
-    }
-    section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
-        background: rgba(255, 255, 255, 0.06) !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        border-radius: 10px !important;
-        color: #FFFFFF !important;
-    }
-    section[data-testid="stSidebar"] div[data-baseweb="select"] span {
-        color: #FFFFFF !important;
-    }
-
-    .sidebar-glass-box {
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid rgba(255, 255, 255, 0.09);
-        border-radius: 12px;
-        padding: 12px 14px;
-        margin-bottom: 12px;
-    }
-    .sidebar-row {
-        display: flex;
-        justify-content: space-between;
-        padding: 5px 0;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-        font-size: 12px;
-    }
-    .sidebar-row:last-child {
-        border-bottom: none;
-        padding-bottom: 0;
-    }
-
-    /* Селекты рабочей области */
-    div[data-baseweb="select"] > div {
-        background: #F4F6F9 !important;
-        color: #11141A !important;
-        border: 1px solid #CFD6E2 !important;
-        border-radius: 10px !important;
-        min-height: 40px !important;
-        font-weight: 600 !important;
-        font-size: 13.5px !important;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03) !important;
-    }
-    div[data-baseweb="select"] span {
-        color: #11141A !important;
-    }
-
-    /* Капсульные вкладки без красной черты */
-    [role="tablist"] {
-        background: #D9DFE8 !important;
-        padding: 4px !important;
-        border-radius: 11px !important;
-        gap: 4px !important;
-        width: fit-content !important;
-        margin-bottom: 12px !important;
-        border: 1px solid #CBD2DE !important;
-    }
-    [role="tablist"]::before, [role="tablist"]::after {
-        display: none !important;
-    }
-    button[role="tab"] {
-        background: transparent !important;
-        border: none !important;
-        border-radius: 8px !important;
-        padding: 6px 14px !important;
-        height: 32px !important;
-    }
-    button[role="tab"] p, button[role="tab"] span, button[role="tab"] div {
-        font-size: 12.5px !important;
-        font-weight: 600 !important;
-        color: #475569 !important;
-    }
-    button[role="tab"][aria-selected="true"] {
-        background: #F4F6F9 !important;
-        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08) !important;
-    }
-    button[role="tab"][aria-selected="true"] p,
-    button[role="tab"][aria-selected="true"] span,
-    button[role="tab"][aria-selected="true"] div {
-        color: #11141A !important;
+    [data-testid="stMetricValue"] {
+        color: #111827 !important;
+        font-size: 1.5rem !important;
         font-weight: 700 !important;
     }
-    div[data-baseweb="tab-highlight"], div[data-baseweb="tab-border"] {
-        display: none !important;
-        height: 0 !important;
+    [data-testid="stMetricLabel"] {
+        color: #4B5563 !important;
+        font-weight: 600 !important;
     }
-
-    /* Верхний бар */
-    .topbar {
-        background: #111318;
+    .alfa-top-nav {
+        background: #111827;
         color: #FFFFFF;
-        padding: 16px 24px;
-        border-radius: 16px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 16px;
-    }
-
-    /* Строгая банковская полоса ключевых показателей (4 карточки) */
-    .kpi-strip {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr) 1.55fr;
-        gap: 14px;
-        align-items: stretch;
-        margin-bottom: 16px;
-    }
-    .kpi-card {
-        background: #F4F6F9;
-        border: 1px solid #CFD6E2;
+        padding: 14px 24px;
         border-radius: 14px;
-        padding: 16px 18px;
         display: flex;
-        flex-direction: column;
         justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
     }
-    .kpi-label {
-        font-size: 11px;
-        font-weight: 600;
-        color: #64748B;
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-    }
-    .kpi-val {
-        font-size: 23px;
+    .alfa-nav-text {
         font-weight: 700;
-        color: #11141A;
-        letter-spacing: -0.6px;
-        margin: 6px 0 2px 0;
-        font-variant-numeric: tabular-nums;
-    }
-    .kpi-sub {
-        font-size: 12px;
-        color: #475569;
-    }
-    .kpi-foot {
-        font-size: 11.5px;
-        color: #475569;
-        padding-top: 10px;
-        margin-top: 10px;
-        border-top: 1px solid #E2E6EE;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .kpi-radar {
-        background: #16181F;
+        font-size: 1.15rem;
+        letter-spacing: -0.02em;
         color: #FFFFFF;
-        border-radius: 14px;
-        padding: 16px 20px;
+    }
+    .alfa-nav-tag {
+        font-size: 0.8rem;
+        color: #9CA3AF;
+        background: rgba(255, 255, 255, 0.08);
+        padding: 4px 12px;
+        border-radius: 980px;
+    }
+    .alfa-panel {
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 16px;
+        padding: 16px 22px;
+        margin-bottom: 20px;
+    }
+    .alfa-entry {
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
         border-left: 4px solid #EF3124;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
+        border-radius: 14px;
+        padding: 20px 24px;
+        margin-bottom: 24px;
     }
-
-    /* Единый строгий лист отчета (Editorial Sheet — как в Stripe / Linear, 0 "ИИ-пузырей") */
-    .report-sheet {
-        background: #F4F6F9;
-        border: 1px solid #CFD6E2;
-        border-radius: 16px;
-        margin-bottom: 14px;
-        overflow: hidden;
-    }
-    .sheet-head {
-        padding: 18px 22px;
-        border-bottom: 1px solid #DEE3EC;
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 16px;
-    }
-    .sheet-grid-2 {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        border-bottom: 1px solid #DEE3EC;
-    }
-    .sheet-cell {
-        padding: 18px 22px;
-        border-right: 1px solid #DEE3EC;
-    }
-    .sheet-cell:last-child {
-        border-right: none;
-    }
-    .cell-kicker {
-        font-size: 11px;
+    .alfa-badge {
+        background: #FEF2F2;
+        color: #991B1B;
+        border: 1px solid #FEE2E2;
+        padding: 3px 10px;
+        border-radius: 980px;
         font-weight: 700;
+        font-size: 0.74rem;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: #64748B;
+    }
+    .alfa-card {
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 18px;
+        padding: 26px 30px;
+        margin-bottom: 24px;
+    }
+    .alfa-card-h2 {
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: #111827;
+        line-height: 1.35;
+        margin: 10px 0 18px 0;
+    }
+    .alfa-box-gray {
+        background: #F9FAFB;
+        border: 1px solid #E5E7EB;
+        border-radius: 12px;
+        padding: 16px 18px;
+        height: 100%;
+    }
+    .alfa-pill {
+        background: #FFFFFF;
+        color: #374151;
+        border: 1px solid #D1D5DB;
+        padding: 5px 10px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        display: inline-block;
+        margin-right: 6px;
+        margin-bottom: 6px;
+    }
+    .box-risk {
+        background: #FEF2F2;
+        border: 1px solid #FEE2E2;
+        border-radius: 10px;
+        padding: 12px 16px;
+        color: #991B1B;
+        font-size: 0.88rem;
+        line-height: 1.45;
         margin-bottom: 8px;
     }
-    .tag-minimal {
-        display: inline-block;
-        background: #E6EAF0;
-        color: #1E293B;
-        border: 1px solid #CBD2DE;
-        padding: 3px 9px;
-        border-radius: 6px;
-        font-size: 11.5px;
-        font-weight: 500;
-        margin-right: 5px;
-        margin-bottom: 5px;
+    .box-opp {
+        background: #F0FDF4;
+        border: 1px solid #DCFCE7;
+        border-radius: 10px;
+        padding: 12px 16px;
+        color: #166534;
+        font-size: 0.88rem;
+        line-height: 1.45;
+        margin-bottom: 8px;
     }
-    .tag-accent {
-        display: inline-block;
-        background: rgba(239, 49, 36, 0.10);
-        color: #B91C1C;
-        border: 1px solid rgba(239, 49, 36, 0.25);
-        padding: 3px 9px;
-        border-radius: 6px;
-        font-size: 11.5px;
-        font-weight: 600;
-        margin-right: 5px;
-        margin-bottom: 5px;
+    .box-bank {
+        background: #F0F9FF;
+        border: 1px solid #BAE6FD;
+        border-left: 3px solid #0284C7;
+        border-radius: 0 12px 12px 0;
+        padding: 16px 20px;
+        height: 100%;
     }
-
-    div.stButton > button[kind="primary"] {
-        background: #EF3124 !important;
+    .box-ai {
+        background: #FFF5F5;
+        border: 1px solid #FECACA;
+        border-left: 3px solid #EF3124;
+        border-radius: 0 12px 12px 0;
+        padding: 16px 20px;
+        height: 100%;
+    }
+    .box-offer {
+        background: #111827;
+        color: #FFFFFF;
+        border-radius: 14px;
+        padding: 22px 26px;
+        margin-top: 18px;
+    }
+    div.stButton > button {
+        background-color: #EF3124 !important;
         color: #FFFFFF !important;
-        border: none !important;
         border-radius: 10px !important;
+        border: none !important;
         font-weight: 600 !important;
-        font-size: 13px !important;
-        padding: 0.5rem 1rem !important;
+        font-size: 0.9rem !important;
+        padding: 8px 20px !important;
     }
-    div.stButton > button[kind="secondary"] {
-        background: #E6EAF0 !important;
-        color: #11141A !important;
-        border: 1px solid #CBD2DE !important;
-        border-radius: 9px !important;
-        font-weight: 600 !important;
-        font-size: 12.5px !important;
+    div.stButton > button:hover {
+        background-color: #D3271B !important;
+    }
+    .stTextInput input {
+        background-color: #FFFFFF !important;
+        color: #111827 !important;
+        border: 1px solid #D1D5DB !important;
+        border-radius: 10px !important;
     }
 </style>
-""",
-    unsafe_allow_html=True,
+""", unsafe_allow_html=True)
+
+ICONS = {
+    "shield": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2" style="vertical-align:-2px;margin-right:6px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+    "trend": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2" style="vertical-align:-2px;margin-right:6px;"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>',
+    "bank": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0284C7" stroke-width="2" style="vertical-align:-2px;margin-right:6px;"><rect width="20" height="4" x="2" y="3" rx="1"/><path d="M4 7v11"/><path d="M8 7v11"/><path d="M12 7v11"/><path d="M16 7v11"/><path d="M20 7v11"/></svg>',
+    "sparkles": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#EF3124" stroke-width="2" style="vertical-align:-2px;margin-right:6px;"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z"/></svg>',
+    "check": '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5" style="vertical-align:-2px;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>'
+}
+
+FALLBACK_COMPANIES = [
+    {
+        "id": "comp_tech_01",
+        "name": "ООО «ТехноПром»",
+        "okved": "26.11 (Производство электроники)",
+        "revenue_mln": 18200.0,
+        "debt_mln": 850.0,
+        "ved": "Импорт комплектующих из КНР (85% расчетов в CNY)"
+    },
+    {
+        "id": "comp_agro_02",
+        "name": "АО «АгроРесурс»",
+        "okved": "01.11 (Выращивание зерновых)",
+        "revenue_mln": 22400.0,
+        "debt_mln": 4650.0,
+        "ved": "Экспорт в Турцию, Египет и ОАЭ"
+    }
+]
+
+def fetch_companies() -> List[Dict[str, Any]]:
+    api_base = get_api_base()
+    try:
+        r = requests.get(f"{api_base}/companies", timeout=1.0)
+        if r.status_code == 200:
+            data = r.json()
+            res = []
+            for item in data:
+                res.append({
+                    "id": item.get("synthetic_u") or item.get("id", "comp_1"),
+                    "name": item.get("name") or item.get("org_name", "ООО «Компания»"),
+                    "okved": item.get("main_okved_name") or item.get("okved", "01.11"),
+                    "revenue_mln": float(item.get("revenue") or item.get("revenue_mln", 15000.0)),
+                    "debt_mln": float(item.get("credit_debt_mln") or item.get("debt_mln", 1200.0)),
+                    "ved": item.get("ved") or "ВЭД: Китай, ЕАЭС"
+                })
+            return res if res else FALLBACK_COMPANIES
+    except Exception:
+        pass
+    return FALLBACK_COMPANIES
+
+def fetch_feed(company_id: str, role: str) -> List[Dict[str, Any]]:
+    api_base = get_api_base()
+    try:
+        r = requests.get(f"{api_base}/feed", params={"company_id": company_id, "role": role}, timeout=2.5)
+        if r.status_code == 200:
+            raw_insights = r.json()
+            adapted = []
+            for ins in raw_insights:
+                wh = ins.get("what_happened", {})
+                wi = ins.get("why_important_for_company", {})
+                cq = ins.get("consequences", {})
+                be = ins.get("bank_evaluation", {})
+                ra = ins.get("recommended_actions", {})
+                tr = ins.get("traceability", {})
+                prod = ra.get("native_bank_product", {})
+
+                adapted.append({
+                    "id": ins.get("insight_id", "ins_1"),
+                    "title": wh.get("title") or ins.get("title", "Ключевое регуляторное изменение"),
+                    "date": wh.get("published_at", "Сегодня, 12:00"),
+                    "source": wh.get("source_name", "Банк России"),
+                    "source_url": wh.get("source_url", "https://cbr.ru"),
+                    "facts": " ".join(wh.get("facts", [])) if isinstance(wh.get("facts"), list) else wh.get("facts", "Событие на финансовых рынках."),
+                    "triggers": wi.get("matched_company_features", ["ОКВЭД", "Кредитный портфель"]),
+                    "impact": wi.get("supply_chain_impact", "Возможны задержки в расчетах с контрагентами."),
+                    "risks": cq.get("risks", ["Рост процентных расходов"]),
+                    "opps": cq.get("opportunities", ["Размещение остатков на депозитах"]),
+                    "alfa_quote": be.get("alfa_bank_position", "Аналитики банка рекомендуют хеджирование процентных и валютных рисков."),
+                    "alfa_report": be.get("cited_report_title", "Макроэкономический обзор Альфа-Банка 2026"),
+                    "alfa_forecast": "Жесткие ДКП условия сохранятся до конца 2026 года.",
+                    "ai_prediction": be.get("ai_model_inference", "Для компании событие требует балансировки ликвидности."),
+                    "ai_conf": f"{ins.get('relevance_score', 95)}%",
+                    "ai_driver": "Высокая доля заемного капитала",
+                    "actions": ra.get("steps_for_role", ["Провести анализ кредитных ковенант"]),
+                    "prod_badge": ins.get("urgency_badge", "Рекомендовано"),
+                    "prod_title": prod.get("product_name", "Хеджирование рисков Альфа-Банк"),
+                    "prod_desc": prod.get("pitch", "Зафиксируйте ставку и оптимизируйте финансовые потоки."),
+                    "prod_btn": prod.get("cta_label", "Оставить заявку"),
+                    "trace": [s.get("reasoning", str(s)) for s in tr.get("agent_steps", [])] if tr.get("agent_steps") else ["1. Ingestion: парсинг релиза", "2. ERP Match: проверка договора", "3. Guardrail: проверка фактов"]
+                })
+            if adapted:
+                return adapted
+    except Exception:
+        pass
+    
+    return [{
+        "id": "ins_default",
+        "title": "Банк России сохранил ключевую ставку на уровне 14,0%: пауза в цикле смягчения",
+        "date": "11 сентября 2026, 13:30",
+        "source": "Пресс-служба Банка России",
+        "source_url": "https://cbr.ru",
+        "facts": "Совет директоров Банка России сохранил ключевую ставку на уровне 14,00% годовых. Это первая пауза в цикле смягчения ДКП. Регулятор ужесточил сигнал.",
+        "triggers": ["ОКВЭД: Высокая зависимость от оборотных кредитов", "Кредитный портфель: 68% с плавающей ставкой КС+2.1%", "Контрагент запросил увеличение отсрочки расчетов"],
+        "impact": "Трейдеры задерживают авансирование из-за паузы снижения ставок по кредитам.",
+        "risks": ["Экономия на процентных расходах откладывается минимум на 2 квартала.", "Риск нарушения ковенанты Net Debt / EBITDA (> 3.0x)."],
+        "opps": ["Размещение остатков на овернайт-депозитах Альфа-Банка под 13.85% годовых.", "Фиксация ставки через процентный своп (IRS) Альфа-Банка."],
+        "alfa_quote": "Для бизнеса сохранение ставки 14% — сигнал о том, что быстрое удешевление кредитов приостановлено. Долговая нагрузка не снизится в ближайшее время.",
+        "alfa_report": "Ключевая ставка ЦБ РФ: ставка без изменения на 14,0%, риторика стала жестче",
+        "alfa_forecast": "КС останется на уровне 14.0% до конца 2026 года.",
+        "ai_prediction": "Для предприятия пауза означает заморозку расходов по долгу. Требуется хеджирование траншей до старта сезона.",
+        "ai_conf": "96%",
+        "ai_driver": "Высокая доля долга с плавающей ставкой",
+        "actions": ["Скорректировать инвестиционный бюджет на 2026–2027 гг.", "Заключить соглашение IRS (процентный своп) с Альфа-Банком по ставке 12.6%."],
+        "prod_badge": "Рекомендовано CFO",
+        "prod_title": "Процентный своп (IRS) Альфа-Банк",
+        "prod_desc": "Зафиксируйте ставку по кредитам с плавающей ставкой на уровне 12.6% на 24 месяца.",
+        "prod_btn": "Рассчитать параметры свопа",
+        "trace": [
+            "1. Planning: определение потребности в анализе ДКП и заемных средств",
+            "2. Tool Execution: извлечение кредитного профиля и макро-отчета Альфа-Банка",
+            "3. Synthesis: генерация выводов по 6 блокам Слайда 14",
+            "4. Self-Reflection: проверка на галлюцинации и ковенантный стресс-тест"
+        ]
+    }]
+
+def post_chat(company_id: str, role: str, insight_id: str, question: str) -> str:
+    api_base = get_api_base()
+    try:
+        payload = {"company_id": company_id, "role": role, "insight_id": insight_id, "question": question}
+        r = requests.post(f"{api_base}/chat", json=payload, timeout=4.0)
+        if r.status_code == 200:
+            data = r.json()
+            return data.get("answer") or data.get("response") or "Ответ получен."
+    except Exception:
+        pass
+    
+    q_low = question.lower()
+    if "долг" in q_low or "нагрузк" in q_low:
+        return "**Расчет влияния на долговую нагрузку (CFO View):**\n\n• Сохранение ставки на 14.0% фиксирует ежемесячные расходы на уровне **54.2 млн руб.**\n• Отсутствие снижения ставки лишает экономии в **3.88 млн руб./мес**.\n• Рекомендация: зафиксировать ставку на уровне 12.6% через IRS Альфа-Банка."
+    return "**Аналитический ассистент Альфа-Инсайт:**\n\nНа основе сопоставления профиля компании и макро-отчета Альфа-Банка, данное событие требует оптимизации графика платежей. Рекомендуем запросить встречу с корпоративным банкиром в Альфа-Бизнес."
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = {}
+if "applied_products" not in st.session_state:
+    st.session_state.applied_products = set()
+
+# НАВБАР
+nav_html = (
+    '<div class="alfa-top-nav">'
+    '<div style="display:flex;align-items:center;">'
+    f'{get_logo_html()}'
+    '<span class="alfa-nav-text">БИЗНЕС ОНЛАЙН</span>'
+    '</div>'
+    '<div class="alfa-nav-tag">Контур персонализированной аналитики • alfa-hack-2026</div>'
+    '</div>'
 )
+st.markdown(nav_html, unsafe_allow_html=True)
 
-companies_list = api_get_companies()
-company_map = {c["company_id"]: c for c in companies_list}
+# ПАНЕЛЬ УПРАВЛЕНИЯ
+st.markdown('<div class="alfa-panel">', unsafe_allow_html=True)
+c_col, r_col, m_col = st.columns([2.5, 2, 1.4])
 
-# --- САЙДБАР ---
-with st.sidebar:
-    if ALFA_BIZ_LOGO_B64:
-        st.markdown(
-            f'<div style="display:flex;align-items:center;gap:12px;padding:4px 0 16px 0;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:16px;">'
-            f'<div style="width:38px;height:38px;border-radius:10px;overflow:hidden;flex-shrink:0;"><img src="{ALFA_BIZ_LOGO_B64}" style="width:100%;height:100%;object-fit:cover;display:block;"/></div>'
-            f'<div><div style="font-weight:700;font-size:15px;color:#FFFFFF;">Альфа-Бизнес</div>'
-            f'<div style="font-size:11.5px;color:#94A3B8;">Крупный бизнес • CIB</div></div></div>',
-            unsafe_allow_html=True,
+companies = fetch_companies()
+comp_dict = {c["name"]: c for c in companies}
+
+with c_col:
+    st.caption("ОРГАНИЗАЦИЯ (ВЫРУЧКА >15 МЛРД РУБ.)")
+    selected_name = st.selectbox("Клиент", list(comp_dict.keys()), label_visibility="collapsed")
+    comp = comp_dict[selected_name]
+
+with r_col:
+    st.caption("РОЛЬ ЛПР (СЛАЙД 5)")
+    role_map = {
+        "CFO": "Финансовый директор (CFO)",
+        "CEO": "Генеральный директор (CEO)",
+        "TREASURER": "Руководитель казначейства (TREASURER)",
+        "ACCOUNTANT": "Главный бухгалтер (ACCOUNTANT)"
+    }
+    selected_role_label = st.selectbox("Роль", list(role_map.values()), index=0, label_visibility="collapsed")
+    current_role_code = [k for k, v in role_map.items() if v == selected_role_label][0]
+
+with m_col:
+    st.metric(
+        label="Выручка (REVENUE)",
+        value=f"{comp['revenue_mln']:,.0f} млн ₽".replace(",", " "),
+        delta=f"Долг: {comp['debt_mln']:,.0f} млн ₽".replace(",", " "),
+        delta_color="inverse"
+    )
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ТОЧКА ВХОДА (Критерий 09)
+insights = fetch_feed(comp["id"], current_role_code)
+entry_html = (
+    '<div class="alfa-entry">'
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+    '<div style="font-size:1.15rem;font-weight:700;color:#111827;">Альфа-Инсайт: Персонализированная аналитика рисков и возможностей</div>'
+    f'<span class="alfa-badge">Критичных событий: {len(insights)}</span>'
+    '</div>'
+    f'<div style="color:#4B5563;font-size:0.9rem;line-height:1.5;">Система обработала внешние публикации и макро-отчеты Альфа-Банка. Сформирован фокус внимания для роли <b>{selected_role_label}</b> предприятия <b>{comp["name"]}</b> (ОКВЭД <code>{comp["okved"]}</code>, профиль ВЭД: <i>{comp["ved"]}</i>).</div>'
+    '</div>'
+)
+st.markdown(entry_html, unsafe_allow_html=True)
+
+# КАРТОЧКА ИНСАЙТА (Все 6 блоков)
+for ins in insights:
+    st.markdown('<div class="alfa-card">', unsafe_allow_html=True)
+    
+    card_header = (
+        '<div style="display:flex;justify-content:space-between;align-items:center;">'
+        '<span class="alfa-badge">Высокий приоритет</span>'
+        f'<span style="font-size:0.82rem;color:#6B7280;">{ins["date"]} • Источник: <b>{ins["source"]}</b></span>'
+        '</div>'
+        f'<div class="alfa-card-h2">{ins["title"]}</div>'
+    )
+    st.markdown(card_header, unsafe_allow_html=True)
+
+    # 1 и 2
+    b1, b2 = st.columns(2)
+    with b1:
+        st.caption("1. ЧТО ПРОИЗОШЛО (ФАКТЫ И ПЕРВОИСТОЧНИК)")
+        b1_html = (
+            '<div class="alfa-box-gray">'
+            f'<div style="font-size:0.9rem;line-height:1.5;color:#374151;margin-bottom:12px;">{ins["facts"]}</div>'
+            f'<a href="{ins["source_url"]}" target="_blank" style="font-size:0.82rem;color:#EF3124;text-decoration:none;font-weight:600;">Официальный первоисточник релиза &rarr;</a>'
+            '</div>'
         )
+        st.markdown(b1_html, unsafe_allow_html=True)
 
-    nav_mode = st.radio(
-        "Навигация",
-        options=[
-            "Аналитическая лента",
-            "Разбор внешнего материала",
-            "Метрики и безопасность",
-        ],
-        label_visibility="collapsed",
-    )
+    with b2:
+        st.caption("2. ПОЧЕМУ ЭТО ВАЖНО ДЛЯ ВАШЕЙ КОМПАНИИ (СЛАЙД 14)")
+        pills = "".join([f'<span class="alfa-pill">{p}</span>' for p in ins["triggers"]])
+        b2_html = (
+            '<div class="alfa-box-gray">'
+            f'<div style="margin-bottom:8px;">{pills}</div>'
+            f'<div style="font-size:0.86rem;color:#4B5563;border-top:1px solid #E5E7EB;padding-top:8px;"><b>Влияние на контрагентов:</b> {ins["impact"]}</div>'
+            '</div>'
+        )
+        st.markdown(b2_html, unsafe_allow_html=True)
 
-    st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
-    selected_comp_id = st.selectbox(
-        "Организация",
-        options=list(company_map.keys()),
-        format_func=lambda cid: company_map[cid]["name"],
-        index=list(company_map.keys()).index(st.session_state.selected_company_id),
-    )
-    st.session_state.selected_company_id = selected_comp_id
+    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-    selected_role_key = st.selectbox(
-        "Роль руководителя",
-        options=list(ROLES.keys()),
-        format_func=lambda r: ROLES[r],
-        index=list(ROLES.keys()).index(st.session_state.selected_role),
-    )
-    st.session_state.selected_role = selected_role_key
+    # 3. Риски vs Возможности
+    st.caption("3. ПРОГНОЗ ПОСЛЕДСТВИЙ ДЛЯ БИЗНЕСА")
+    rc, oc = st.columns(2)
+    with rc:
+        st.markdown(f"<div style='font-size:0.88rem;font-weight:700;color:#DC2626;margin-bottom:6px;'>{ICONS['shield']} Потенциальные риски</div>", unsafe_allow_html=True)
+        for r in ins["risks"]:
+            st.markdown(f'<div class="box-risk">• {r}</div>', unsafe_allow_html=True)
+    with oc:
+        st.markdown(f"<div style='font-size:0.88rem;font-weight:700;color:#16A34A;margin-bottom:6px;'>{ICONS['trend']} Открывающиеся возможности</div>", unsafe_allow_html=True)
+        for o in ins["opps"]:
+            st.markdown(f'<div class="box-opp">{ICONS["check"]} {o}</div>', unsafe_allow_html=True)
 
-    current_company = company_map[selected_comp_id]
+    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
-    st.markdown(
-        """
-        <div style="font-size:10.5px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 6px 2px;">Индикаторы рынка</div>
-        <div class="sidebar-glass-box">
-            <div class="sidebar-row"><span style="color:#94A3B8;">Ключевая ставка ЦБ</span><span style="font-weight:600;color:#F8FAFC;">14,00%</span></div>
-            <div class="sidebar-row"><span style="color:#94A3B8;">RUONIA</span><span style="font-weight:600;color:#F8FAFC;">13,85%</span></div>
-            <div class="sidebar-row"><span style="color:#94A3B8;">CNY / RUB</span><span style="font-weight:600;color:#F8FAFC;">12,84 ₽</span></div>
-            <div class="sidebar-row"><span style="color:#94A3B8;">ОФЗ 2Y</span><span style="font-weight:600;color:#F8FAFC;">14,65%</span></div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-# --- ВЕРХНИЙ БАР ---
-logo_html = (
-    f'<div style="width:38px;height:38px;border-radius:10px;overflow:hidden;flex-shrink:0;"><img src="{ALFA_LOGO_B64}" style="width:100%;height:100%;object-fit:cover;display:block;"/></div>'
-    if ALFA_LOGO_B64
-    else '<div style="width:38px;height:38px;border-radius:10px;background:#EF3124;color:#FFF;display:flex;align-items:center;justify-content:center;font-weight:800;">A</div>'
-)
-
-st.markdown(
-    f"""
-<div class="topbar">
-    <div style="display:flex;align-items:center;gap:14px;">
-        {logo_html}
-        <div>
-            <div style="font-size:17px;font-weight:700;color:#FFFFFF;letter-spacing:-0.2px;">Альфа-Инсайт</div>
-            <div style="font-size:12.5px;color:#94A3B8;">{current_company['name']} • {current_company['okved_name']} • {ROLES[selected_role_key]}</div>
-        </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;">
-        <span style="background:rgba(239,49,36,0.18);border:1px solid rgba(239,49,36,0.45);color:#FCA5A5;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;">
-            2 события требуют внимания
-        </span>
-    </div>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-# --- ПЕРЕКЛЮЧАТЕЛЬ КОНТЕКСТА ---
-c1, c2, c3 = st.columns([2.2, 1.8, 1.0])
-with c1:
-    top_comp = st.selectbox(
-        "Юридическое лицо",
-        options=list(company_map.keys()),
-        format_func=lambda cid: f"{company_map[cid]['name']} ({company_map[cid]['revenue_Text']})",
-        index=list(company_map.keys()).index(st.session_state.selected_company_id),
-        key="top_comp_select",
-    )
-    if top_comp != st.session_state.selected_company_id:
-        st.session_state.selected_company_id = top_comp
-        st.rerun()
-with c2:
-    top_role = st.selectbox(
-        "Роль руководителя",
-        options=list(ROLES.keys()),
-        format_func=lambda r: ROLES[r],
-        index=list(ROLES.keys()).index(st.session_state.selected_role),
-        key="top_role_select",
-    )
-    if top_role != st.session_state.selected_role:
-        st.session_state.selected_role = top_role
-        st.rerun()
-with c3:
-    st.markdown('<div style="height:27px;"></div>', unsafe_allow_html=True)
-    filter_crit = st.checkbox("Высокий приоритет", value=False)
-
-current_company = company_map[st.session_state.selected_company_id]
-current_role = st.session_state.selected_role
-
-# --- ПОЛОСА KPI СЧЕТОВ И ТОЧКИ ВХОДА ---
-credit_val = current_company["accounts_summary"].get("active_credit_line", "")
-credit_sub = current_company["accounts_summary"].get("credit_sub", "")
-
-st.markdown(
-    f"""
-<div class="kpi-strip">
-    <div class="kpi-card">
-        <div>
-            <div class="kpi-label">Расчетный счет RUB</div>
-            <div class="kpi-val">{current_company['accounts_summary']['ruble_balance']}</div>
-            <div class="kpi-sub">Рублевая ликвидность</div>
-        </div>
-        <div class="kpi-foot">
-            <span>Статус счета</span>
-            <span style="color:#059669;font-weight:600;">Активен</span>
-        </div>
-    </div>
-    <div class="kpi-card">
-        <div>
-            <div class="kpi-label">Валютный счет CNY</div>
-            <div class="kpi-val">{current_company['accounts_summary']['cny_balance']}</div>
-            <div class="kpi-sub">ВЭД: {current_company['fts_country']}</div>
-        </div>
-        <div class="kpi-foot">
-            <span>Прямой клиринг</span>
-            <span style="color:#059669;font-weight:600;">Подключен</span>
-        </div>
-    </div>
-    <div class="kpi-card">
-        <div>
-            <div class="kpi-label">Долговой портфель</div>
-            <div class="kpi-val">{credit_val}</div>
-            <div class="kpi-sub">{credit_sub}</div>
-        </div>
-        <div class="kpi-foot">
-            <span>Процентный риск</span>
-            <span style="color:#B91C1C;font-weight:600;">Высокий</span>
-        </div>
-    </div>
-    <div class="kpi-radar">
-        <div>
-            <div style="font-size:11px;font-weight:700;color:#EF3124;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">
-                Аналитическая сводка • {ROLES[current_role]}
-            </div>
-            <div style="font-size:14.5px;font-weight:600;color:#FFFFFF;line-height:1.35;">
-                Ключевая ставка 14,0% и комплаенс расчетов в CNY затрагивают {current_company['supply_chain']['payers_cnt']} покупателей и импортные контракты компании.
-            </div>
-        </div>
-        <div style="font-size:11.5px;color:#94A3B8;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;">
-            <span>ОКВЭД {current_company['okved_code']}</span>
-            <span>Доля рынка: {current_company['market_share']}</span>
-        </div>
-    </div>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-# --- ПРОФИЛЬ И ГРАФ ЦЕПОЧКИ ПОСТАВОК ---
-ctx_tab1, ctx_tab2 = st.tabs(["Контекст бизнеса", "Схема цепочки контрагентов"])
-with ctx_tab1:
-    st.markdown(
-        f"""
-        <div class="report-sheet" style="padding:16px 20px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-                <span style="font-size:13px;font-weight:700;color:#11141A;">Факторы чувствительности бизнеса: {current_company['name']}</span>
-                <span style="font-size:12px;color:#64748B;">{current_company['group_id']} • {current_company['region']} • Штат: {current_company['workers_gradation']}</span>
-            </div>
-            <div>
-                <span class="tag-accent">ОКВЭД {current_company['okved_code']}: {current_company['okved_name']}</span>
-                <span class="tag-minimal">Выручка: {current_company['revenue_Text']}</span>
-                <span class="tag-minimal">Рынок: {current_company['market_share']}</span>
-                <span class="tag-minimal">Направления ВЭД: {current_company['fts_country']}</span>
-                <span class="tag-minimal">Контрагенты: {current_company['supply_chain']['payers_cnt']} покупателей / {current_company['supply_chain']['beneficiaries_cnt']} поставщиков</span>
-                <span class="tag-minimal">{current_company['supply_chain']['key_dependency']}</span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with ctx_tab2:
-    st.markdown(
-        f'<div class="report-sheet" style="padding:18px 22px;">'
-        f'<div style="display:grid;grid-template-columns:1fr 64px 1fr 64px 1fr;align-items:center;">'
-        f'<div style="display:flex;flex-direction:column;gap:8px;">'
-        f'<div style="background:#EAECEF;border-left:3px solid #EF3124;border-radius:8px;padding:10px 14px;">'
-        f'<div style="font-size:12px;font-weight:700;color:#11141A;">Покупатели строительного сектора</div>'
-        f'<div style="font-size:11px;color:#B91C1C;">Риск роста отсрочки платежей при ставке 14%</div></div>'
-        f'<div style="background:#EAECEF;border-left:3px solid #64748B;border-radius:8px;padding:10px 14px;">'
-        f'<div style="font-size:12px;font-weight:700;color:#11141A;">Прочие заказчики ({current_company["supply_chain"]["payers_cnt"]} юрлиц)</div>'
-        f'<div style="font-size:11px;color:#475569;">Плановый график поступлений выручки</div></div></div>'
-        f'<svg viewBox="0 0 64 110" width="64" height="110"><path d="M 0 28 C 32 28, 32 55, 60 55" fill="none" stroke="#EF3124" stroke-width="1.8"/><path d="M 0 82 C 32 82, 32 55, 60 55" fill="none" stroke="#94A3B8" stroke-width="1.5"/></svg>'
-        f'<div style="background:#16181F;color:#FFFFFF;border-radius:12px;padding:14px;text-align:center;">'
-        f'<div style="font-size:13px;font-weight:700;">{current_company["name"]}</div>'
-        f'<div style="font-size:11px;color:#94A3B8;margin-top:3px;">Выручка {current_company["revenue_Text"]}</div></div>'
-        f'<svg viewBox="0 0 64 110" width="64" height="110"><path d="M 4 55 C 32 55, 32 28, 64 28" fill="none" stroke="#EF3124" stroke-width="1.8"/><path d="M 4 55 C 32 55, 32 82, 64 82" fill="none" stroke="#94A3B8" stroke-width="1.5"/></svg>'
-        f'<div style="display:flex;flex-direction:column;gap:8px;">'
-        f'<div style="background:#EAECEF;border-left:3px solid #EF3124;border-radius:8px;padding:10px 14px;">'
-        f'<div style="font-size:12px;font-weight:700;color:#11141A;">Импортные поставщики ({current_company["fts_country"]})</div>'
-        f'<div style="font-size:11px;color:#B91C1C;">Риск комплаенс-задержки расчетов в CNY</div></div>'
-        f'<div style="background:#EAECEF;border-left:3px solid #64748B;border-radius:8px;padding:10px 14px;">'
-        f'<div style="font-size:12px;font-weight:700;color:#11141A;">Внутренние подрядчики ({current_company["supply_chain"]["beneficiaries_cnt"]} юрлиц)</div>'
-        f'<div style="font-size:11px;color:#475569;">Расчеты в рублях внутри РФ</div></div></div></div></div>',
-        unsafe_allow_html=True,
-    )
-
-
-# --- РЕНДЕР СТРОГОГО АНАЛИТИЧЕСКОГО ЛИСТА (БЕЗ ИИ-ШАБЛОНОВ) ---
-def render_insight_card(item: dict, idx: int):
-    ins_id = item["insight_id"]
-    b1 = item["block1_what_happened"]
-    b2 = item["block2_why_important"]
-    b3 = item["block3_consequences"]
-    b4 = item["block4_alfa_vs_ai"]
-    b5 = item["block5_actions_and_product"]
-    b6 = item["block6_traceability"]
-    prod = b5["bank_product"]
-
-    facts_html = "".join([f"<li style='margin-bottom:4px;'>{f}</li>" for f in b1["facts"]])
-    triggers_html = "".join([f'<span class="tag-minimal">{t}</span>' for t in b2["triggers"]])
-    risks_li = "".join([f"<li style='margin-bottom:5px;'>{r}</li>" for r in b3["risks"]])
-    opps_li = "".join([f"<li style='margin-bottom:5px;'>{o}</li>" for o in b3["opportunities"]])
-    alfa_pos = b4["alfa_bank_position"]
-    ai_pos = b4["ai_model_conclusion"]
-
-    dot_color = "#EF3124" if item.get("is_critical") else "#64748B"
-
-    # Единый строгий аналитический лист с тонкими разделителями 1px (как в Stripe / Bloomberg)
-    st.markdown(
-        f"""
-        <div class="report-sheet">
-            <div class="sheet-head">
-                <div>
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-                        <span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:{dot_color};text-transform:uppercase;letter-spacing:0.4px;">
-                            <span style="width:7px;height:7px;border-radius:50%;background:{dot_color};display:inline-block;"></span>
-                            {item['criticality']} • Релевантность {item['relevance_score']}%
-                        </span>
-                        <span style="font-size:12px;color:#64748B;">{item['category']} • {item['date']}</span>
-                    </div>
-                    <div style="font-size:18.5px;font-weight:700;color:#11141A;line-height:1.3;">
-                        {item['title']}
-                    </div>
-                </div>
-                <div style="text-align:right;flex-shrink:0;">
-                    <div style="font-size:11px;color:#64748B;font-weight:600;">Оценка влияния</div>
-                    <div style="font-size:14px;font-weight:700;color:#11141A;margin-top:2px;">{item.get('impact_metric', '')}</div>
-                </div>
-            </div>
-            <div class="sheet-grid-2">
-                <div class="sheet-cell">
-                    <div class="cell-kicker">Событие и ключевые факты</div>
-                    <p style="font-size:13.5px;line-height:1.5;color:#11141A;margin:0 0 8px 0;">{b1['summary']}</p>
-                    <ul style="font-size:12.5px;line-height:1.45;padding-left:16px;margin:0 0 8px 0;color:#334155;">{facts_html}</ul>
-                    <a href="{b1['source_url']}" target="_blank" style="font-size:12px;font-weight:600;color:#EF3124;text-decoration:none;">Источник: {b1['source_name']} ↗</a>
-                </div>
-                <div class="sheet-cell">
-                    <div class="cell-kicker">Влияние на {current_company['name']}</div>
-                    <p style="font-size:13.5px;line-height:1.5;color:#11141A;margin:0 0 12px 0;">{b2['explanation']}</p>
-                    <div style="margin-top:8px;">{triggers_html}</div>
-                </div>
-            </div>
-            <div class="sheet-grid-2">
-                <div class="sheet-cell" style="border-left:3px solid #EF3124;">
-                    <div class="cell-kicker" style="color:#B91C1C;">Факторы риска</div>
-                    <ul style="font-size:13px;line-height:1.5;padding-left:16px;margin:0;color:#1E293B;">{risks_li}</ul>
-                </div>
-                <div class="sheet-cell" style="border-left:3px solid #059669;">
-                    <div class="cell-kicker" style="color:#047857;">Финансовые возможности</div>
-                    <ul style="font-size:13px;line-height:1.5;padding-left:16px;margin:0;color:#1E293B;">{opps_li}</ul>
-                </div>
-            </div>
-            <div class="sheet-grid-2" style="border-bottom:none;background:#EDF0F6;">
-                <div class="sheet-cell">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                        <span class="cell-kicker" style="color:#EF3124;margin:0;">Экспертная позиция Альфа-Банка</span>
-                        <span style="font-size:11px;color:#64748B;">Аналитика ЦМИ</span>
-                    </div>
-                    <div style="font-size:12px;font-weight:600;color:#11141A;margin-bottom:6px;">{alfa_pos['report_title']}</div>
-                    <div style="font-size:12.5px;color:#334155;line-height:1.45;border-left:2px solid #EF3124;padding-left:10px;">
-                        {alfa_pos['quote']}
-                    </div>
-                </div>
-                <div class="sheet-cell">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                        <span class="cell-kicker" style="color:#11141A;margin:0;">Расчетный прогноз для компании</span>
-                        <span style="font-size:11px;color:#059669;font-weight:600;">{ai_pos['confidence']}</span>
-                    </div>
-                    <div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:6px;">{ai_pos['model_name']}</div>
-                    <div style="font-size:13px;color:#11141A;line-height:1.5;">
-                        {ai_pos['conclusion']}
-                    </div>
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # Нижняя панель инструментов карточки (Действия, Симулятор, Вопрос аналитику, Источники)
-    t_act, t_sim, t_chat, t_trace = st.tabs([
-        f"Рекомендации ({ROLES[current_role]}) и продукт банка",
-        "Калькулятор эффекта (P&L)",
-        "Вопрос аналитику",
-        "Источники и трассировка",
-    ])
-
-    with t_act:
-        ac1, ac2 = st.columns([1.3, 1.0])
-        with ac1:
-            for step_i, step_text in enumerate(b5["checklist"]):
-                st.checkbox(step_text, value=(step_i == 0), key=f"chk_{ins_id}_{current_role}_{step_i}")
-        with ac2:
-            st.markdown(
-                f"""
-                <div style="background:#16181F;color:#FFFFFF;border-radius:12px;padding:14px 18px;margin-bottom:8px;">
-                    <div style="font-size:11px;color:#94A3B8;font-weight:600;">Рекомендуемый инструмент Альфа-Бизнеса</div>
-                    <div style="font-size:14.5px;font-weight:700;color:#FFFFFF;margin:3px 0;">{prod['title']}</div>
-                    <div style="font-size:12px;color:#CBD5E1;line-height:1.4;">{prod['desc']}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            if st.button(prod["cta"], key=f"cta_{ins_id}_{idx}", type="primary", use_container_width=True):
-                st.success(f"Заявка по инструменту «{prod['title']}» передана вашему персональному менеджеру в Альфа-Бизнесе.")
-
-    with t_sim:
-        sc1, sc2, sc3 = st.columns([1.1, 1.1, 1.4])
-        with sc1:
-            hedge_share = st.slider("Доля хеджирования портфеля (%)", 0, 100, 60, 10, key=f"sh_{ins_id}_{idx}")
-        with sc2:
-            stress_level = st.slider("Горизонт расчета (мес.)", 3, 12, 6, 3, key=f"sm_{ins_id}_{idx}")
-        base_loss = 7.2 * stress_level
-        saved_amount = round(base_loss * (hedge_share / 100.0) * 0.82, 1)
-        net_exposure = round(base_loss - saved_amount, 1)
-        with sc3:
-            st.markdown(
-                f"""
-                <div class="report-sheet" style="padding:12px 16px;margin:0;">
-                    <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;">
-                        <span>Потенциальный риск без хеджирования:</span><b style="color:#B91C1C;">-{base_loss:.1f} млн ₽</b>
-                    </div>
-                    <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;">
-                        <span>Экономия при подключении инструмента:</span><b style="color:#059669;">+{saved_amount:.1f} млн ₽</b>
-                    </div>
-                    <div style="display:flex;justify-content:space-between;font-size:12.5px;border-top:1px solid #DEE3EC;padding-top:4px;">
-                        <span>Остаточная нагрузка на EBITDA:</span><b>-{net_exposure:.1f} млн ₽</b>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    with t_chat:
-        pc1, pc2, pc3 = st.columns(3)
-        preset_q = None
-        with pc1:
-            if st.button("Влияние на долговую нагрузку", key=f"p1_{ins_id}_{idx}", use_container_width=True):
-                preset_q = "Рассчитай влияние на нашу долговую нагрузку"
-        with pc2:
-            if st.button("Риски по цепочке контрагентов", key=f"p2_{ins_id}_{idx}", use_container_width=True):
-                preset_q = "Как это отразится на наших поставщиках и покупателях?"
-        with pc3:
-            if st.button("Базовые отчеты ЦМИ Банка", key=f"p3_{ins_id}_{idx}", use_container_width=True):
-                preset_q = "Какие макро-отчеты Альфа-Банка подтверждают этот вывод?"
-
-        qc1, qc2 = st.columns([3.6, 1.0])
-        with qc1:
-            custom_q = st.text_input("Вопрос по событию", placeholder="Введите уточняющий вопрос...", key=f"iq_{ins_id}_{idx}", label_visibility="collapsed")
-        with qc2:
-            send_clicked = st.button("Отправить", key=f"sq_{ins_id}_{idx}", type="primary", use_container_width=True)
-
-        final_q = preset_q or (custom_q if send_clicked and custom_q.strip() else None)
-        if final_q:
-            res = api_post_chat(current_company["company_id"], current_role, ins_id, final_q)
-            st.session_state.chat_history[ins_id] = {"q": final_q, "a": res.get("answer", "")}
-
-        if ins_id in st.session_state.chat_history:
-            st.markdown(st.session_state.chat_history[ins_id]["a"])
-
-    with t_trace:
-        tc1, tc2 = st.columns([1.3, 1.0])
-        with tc1:
-            for step_obj in b6["agent_steps"]:
-                st.markdown(f"- **{step_obj['stage']}:** {step_obj['detail']}")
-        with tc2:
-            for feat in b6["csv_features_used"]:
-                st.code(feat, language="text")
+    # 4. Банк vs AI
+    st.caption("4. ОЦЕНКА АЛЬФА-БАНКА VS ВЫВОД AI-МОДЕЛИ (КРИТЕРИЙ 03)")
+    mc, aic = st.columns(2)
+    with mc:
+        b_html = (
+            '<div class="box-bank">'
+            f'<div style="font-weight:700;color:#0284C7;font-size:0.92rem;margin-bottom:6px;">{ICONS["bank"]} Позиция аналитиков Альфа-Банка</div>'
+            f'<div style="font-size:0.9rem;font-style:italic;color:#1E293B;margin-bottom:10px;line-height:1.45;">«{ins["alfa_quote"]}»</div>'
+            f'<div style="font-size:0.78rem;color:#64748B;">Материал: <b>{ins["alfa_report"]}</b><br>Базовый прогноз: {ins["alfa_forecast"]}</div>'
+            '</div>'
+        )
+        st.markdown(b_html, unsafe_allow_html=True)
+    with aic:
+        ai_html = (
+            '<div class="box-ai">'
+            f'<div style="font-weight:700;color:#EF3124;font-size:0.92rem;margin-bottom:6px;">{ICONS["sparkles"]} Персонализированный AI-вывод для {comp["name"]}</div>'
+            f'<div style="font-size:0.9rem;color:#1E293B;margin-bottom:10px;line-height:1.45;">{ins["ai_prediction"]}</div>'
+            f'<div style="font-size:0.78rem;color:#991B1B;">Уверенность модели: <b>{ins["ai_conf"]}</b> • Драйвер: {ins["ai_driver"]}</div>'
+            '</div>'
+        )
+        st.markdown(ai_html, unsafe_allow_html=True)
 
     st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
 
+    # 5. Действия + Продукт
+    st.caption(f"5. РЕКОМЕНДУЕМЫЕ ДЕЙСТВИЯ ДЛЯ РОЛИ: {selected_role_label.upper()}")
+    for s_idx, act in enumerate(ins["actions"], 1):
+        st.checkbox(f"Шаг {s_idx}: {act}", key=f"step_{ins['id']}_{s_idx}")
 
-if nav_mode == "Аналитическая лента":
-    feed_items = st.session_state.custom_insights + api_get_feed(
-        current_company["company_id"], current_role
+    prod_html = (
+        '<div class="box-offer">'
+        f'<span style="background:#EF3124;color:#FFFFFF;padding:3px 8px;border-radius:6px;font-size:0.7rem;font-weight:700;">{ins["prod_badge"]}</span>'
+        f'<div style="font-size:1.15rem;font-weight:700;margin-top:6px;">{ins["prod_title"]}</div>'
+        f'<div style="font-size:0.86rem;color:#9CA3AF;margin-top:4px;max-width:680px;line-height:1.4;">{ins["prod_desc"]}</div>'
+        '</div>'
     )
-    if filter_crit:
-        feed_items = [x for x in feed_items if x.get("is_critical")]
+    st.markdown(prod_html, unsafe_allow_html=True)
 
-    for idx, insight in enumerate(feed_items):
-        render_insight_card(insight, idx)
+    pk = f"prod_{ins['id']}"
+    if pk in st.session_state.applied_products:
+        st.success(f"Заявка на продукт «{ins['prod_title']}» успешно передана корпоративному банкиру Альфа-Банка.")
+    else:
+        if st.button(f"{ins['prod_btn']}", key=f"btn_{pk}"):
+            st.session_state.applied_products.add(pk)
+            st.balloons()
+            st.rerun()
 
-elif nav_mode == "Разбор внешнего материала":
-    with st.form("live_news_form"):
-        new_title = st.text_input(
-            "Заголовок материала",
-            value="Минпромторг и ФТС обсуждают изменение пошлин и субсидирования логистики для промышленного экспорта с 4 квартала 2026 года",
-        )
-        new_text = st.text_area(
-            "Текст новости или документа",
-            height=110,
-            value=(
-                "Правительство рассматривает пакет мер по перенастройке транспортных субсидий и таможенных пошлин "
-                "для крупных промышленных и аграрных экспортеров, работающих на восточном и южном направлениях."
-            ),
-        )
-        new_url = st.text_input("Источник", value="https://www.rbc.ru/economics/")
-        submitted = st.form_submit_button("Выполнить анализ влияния на компанию", type="primary")
+    # 6. Traceability
+    with st.expander("Аудит-лог и происхождение выводов (Traceability & Слайд 12)"):
+        st.caption("Пошаговый протокол рассуждения агента, сопоставленные признаки и верифицированные источники:")
+        for t in ins["trace"]:
+            st.markdown(f"• {t}")
 
-    if submitted:
-        live_card = analyze_custom_news_Realtime(
-            current_company["company_id"], current_role, new_title, new_text, new_url
-        )
-        st.session_state.custom_insights = [live_card]
+    # Чат
+    st.markdown("<hr style='border:none;border-top:1px solid #E5E7EB;margin:24px 0;'>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size:0.95rem;font-weight:700;color:#111827;margin-bottom:10px;'>Задать уточняющий вопрос AI-аналитику:</div>", unsafe_allow_html=True)
 
-    if st.session_state.custom_insights:
-        render_insight_card(st.session_state.custom_insights[0], 999)
+    q1, q2 = st.columns(2)
+    selected_preset = None
+    if q1.button("Влияние на долговую нагрузку (CFO)", key=f"q1_{ins['id']}"):
+        selected_preset = "Рассчитай влияние на долговую нагрузку компании"
+    if q2.button("Влияние на цепочку покупателей", key=f"q2_{ins['id']}"):
+        selected_preset = "Как это отразится на наших поставщиках и покупателях?"
 
-elif nav_mode == "Метрики и безопасность":
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Точность отбора (Precision@3)", "92.4%")
-    m2.metric("Верификация фактов", "98.7%")
-    m3.metric("Конверсия в продукты", "18.5%")
-    m4.metric("Среднее время отклика", "1.3 сек")
+    u_query = st.text_input("Или задайте свой вопрос аналитику в свободной форме:", key=f"inp_{ins['id']}", placeholder="Например: 'Какой размер финансового резерва потребуется подготовить?'")
+
+    if st.button("Спросить AI-аналитика", key=f"ask_{ins['id']}") or selected_preset:
+        txt = selected_preset if selected_preset else u_query
+        if txt:
+            with st.spinner("AI-агент рассчитывает финансовые показатели..."):
+                ans = post_chat(comp["id"], current_role_code, ins["id"], txt)
+                st.session_state.chat_history[ins['id']] = {"q": txt, "a": ans}
+
+    if ins['id'] in st.session_state.chat_history:
+        h = st.session_state.chat_history[ins['id']]
+        st.markdown(f"<div style='background:#F3F4F6;border-radius:10px;padding:12px 16px;margin:12px 0 8px 0;font-size:0.9rem;'><b>Ваш запрос:</b> {h['q']}</div>", unsafe_allow_html=True)
+        st.markdown(h['a'])
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+st.markdown("<center style='color:#9CA3AF;font-size:0.8rem;margin-top:24px;'>Интернет-банк «Альфа-Бизнес» • Сервис «Альфа-Инсайт» • Тестовый контур alfa-hack-2026</center>", unsafe_allow_html=True)
