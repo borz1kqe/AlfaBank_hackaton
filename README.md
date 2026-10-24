@@ -11,7 +11,7 @@
 
 ### 🌐 ДЕМО-СТЕНД ОНЛАЙН (LIVE DEMO)
 Сервис развернут в публичном облаке и доступен без установки окружения:  
-👉 **[https://alfa-insight-2026.streamlit.app](https://alfa-insight-2026.streamlit.app)**  
+👉 **[https://alfabankhackaton-fxf5a5wsdu4quzw8wwlgyk.streamlit.app](https://alfabankhackaton-fxf5a5wsdu4quzw8wwlgyk.streamlit.app)**  
 *(Тестовый аккаунт жюри: `alfa-hack-2026`)*
 
 ---
