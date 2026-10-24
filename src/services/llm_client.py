@@ -1,10 +1,11 @@
 # src/services/llm_client.py
 import os
+import re
 import json
 import sqlite3
 import hashlib
-from typing import Optional, Dict, Any
-from openai import OpenAI
+from typing import Optional, Dict, Any, List
+from openai import OpenAI, APITimeoutError, APIConnectionError
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,6 +19,28 @@ ALLOWED_MODELS = {
     "vision": "Qwen3-VL-30B-A3B-Instruct",
     "text": "Kimi-K2.6",
 }
+
+# Идентификаторы моделей на шлюзе (отличаются от «человеческих» названий выше).
+# Можно переопределить через переменные окружения LLM_MODEL_REASONING и т.д.
+GATEWAY_SLUGS = {
+    "reasoning": os.getenv("LLM_MODEL_REASONING", "z-ai/glm-5.3-flash"),
+    "universal": os.getenv("LLM_MODEL_UNIVERSAL", "qwen/qwen3.6-35b-a3b"),
+    "research": os.getenv("LLM_MODEL_RESEARCH", "deepseek/deepseek-v4.1-flash"),
+}
+DEFAULT_GATEWAY_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4.1-flash")
+
+
+def _parse_json_loose(text: str) -> Dict[str, Any]:
+    """Достаёт JSON даже если модель обернула его в ```json ... ```."""
+    text = (text or "").strip()
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.IGNORECASE)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        m = re.search(r"\{.*\}", text, flags=re.DOTALL)
+        if m:
+            return json.loads(m.group(0))
+        raise
 
 
 class SafeLLMClient:
@@ -33,9 +56,18 @@ class SafeLLMClient:
         os.makedirs(os.path.dirname(self.cache_db_path), exist_ok=True)
         self._init_cache_db()
 
+        # Счётчики режимов работы: live — ответ от модели, cached — из кэша, fallback — детерминированный синтез
+        self.stats: Dict[str, int] = {"live": 0, "cached": 0, "fallback": 0}
+
         self.client: Optional[OpenAI] = None
         if self.api_key and self.api_key != "your_key_here":
-            self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+            # Короткий таймаут и без повторов: демо не должно зависать на 10 минут
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+                timeout=float(os.getenv("LLM_TIMEOUT", "20")),
+                max_retries=0,
+            )
 
     def _init_cache_db(self):
         with sqlite3.connect(self.cache_db_path) as conn:
@@ -80,25 +112,50 @@ class SafeLLMClient:
         cached = self._get_cached(prompt_hash)
         if cached:
             try:
-                return json.loads(cached)
+                data = json.loads(cached)
+                self.stats["cached"] += 1
+                return data
             except json.JSONDecodeError:
                 pass
 
         if self.client is not None:
-            try:
-                resp = self.client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    temperature=0.2,
-                    response_format={"type": "json_object"},
-                )
-                content = resp.choices[0].message.content or "{}"
-                self._save_cache(prompt_hash, model_name, content)
-                return json.loads(content)
-            except Exception as e:
-                print(f"[LLM Warning] Ошибка вызова API ({e}), переключаемся на детерминированный синтез.")
+            candidates: List[str] = []
+            for m in (GATEWAY_SLUGS.get(model_tier), DEFAULT_GATEWAY_MODEL):
+                if m and m not in candidates:
+                    candidates.append(m)
 
+            network_down = False
+            for gw_model in candidates:
+                if network_down:
+                    break
+                for use_json_mode in (True, False):
+                    try:
+                        kwargs: Dict[str, Any] = dict(
+                            model=gw_model,
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt},
+                            ],
+                            temperature=0.2,
+                        )
+                        if use_json_mode:
+                            kwargs["response_format"] = {"type": "json_object"}
+                        resp = self.client.chat.completions.create(**kwargs)
+                        content = resp.choices[0].message.content or "{}"
+                        data = _parse_json_loose(content)
+                        self._save_cache(prompt_hash, model_name, json.dumps(data, ensure_ascii=False))
+                        self.stats["live"] += 1
+                        return data
+                    except (APITimeoutError, APIConnectionError) as e:
+                        print(f"[LLM Warning] Шлюз недоступен ({e}), переключаемся на детерминированный синтез.")
+                        network_down = True
+                        break
+                    except Exception as e:
+                        print(f"[LLM Warning] {gw_model} (json_mode={use_json_mode}): {e}")
+                        msg = str(e).lower()
+                        if use_json_mode and ("response_format" in msg or "json" in msg):
+                            continue  # шлюз не поддерживает JSON-режим — пробуем без него
+                        break  # модель недоступна — пробуем следующую
+
+        self.stats["fallback"] += 1
         return fallback_dict or {}
