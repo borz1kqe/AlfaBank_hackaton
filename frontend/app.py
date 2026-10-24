@@ -67,10 +67,12 @@ st.markdown("""
 
     header[data-testid="stHeader"] {
         background: transparent !important;
-        height: 0 !important;
-        min-height: 0 !important;
+        height: 3.5rem !important;
+        min-height: 3.5rem !important;
         overflow: visible !important;
     }
+    /* правый тулбар Streamlit скрываем, кнопки шторки остаются видимыми */
+    [data-testid="stToolbar"] { visibility: hidden !important; }
 
     /* КНОПКА ОТКРЫТИЯ ШТОРКИ: яркая, с подписью, всегда поверх контента */
     [data-testid="stSidebarCollapsedControl"],
@@ -80,14 +82,20 @@ st.markdown("""
         opacity: 1 !important;
     }
     [data-testid="stSidebarCollapsedControl"] {
-        position: fixed !important;
-        top: 14px !important;
-        left: 14px !important;
-        z-index: 999999 !important;
+        position: static !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        transform: none !important;
     }
     [data-testid="stSidebarCollapsedControl"] button,
     button[data-testid="stExpandSidebarButton"] {
         display: inline-flex !important;
+        position: fixed !important;
+        top: 12px !important;
+        left: 14px !important;
+        margin: 0 !important;
+        z-index: 999999 !important;
+        visibility: visible !important;
         align-items: center !important;
         justify-content: center !important;
         gap: 8px !important;
@@ -514,9 +522,22 @@ st.markdown("""
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 8px; }
 
+    /* ШРИФТ: Times New Roman везде (иконки Material не трогаем) */
+    html, body, .stApp,
+    .stApp *:not([data-testid="stIconMaterial"]):not(.material-icons):not(.material-symbols-rounded),
+    [data-testid="stSidebar"] *:not([data-testid="stIconMaterial"]) {
+        font-family: "Times New Roman", Times, "Liberation Serif", serif !important;
+        letter-spacing: 0 !important;
+    }
+    .apple-title-h2 { font-size: 1.45rem; }
+    div.stButton > button, [data-testid="stCheckbox"] label { font-size: 0.95rem !important; }
+
+    /* Пустая оболочка карточки создавала белый пустой блок */
+    .apple-card-panel:empty { display: none !important; }
+
     @media (max-width: 768px) {
         div.block-container {
-            padding: 2.8rem 0.6rem 3rem 0.6rem !important;
+            padding: 4.6rem 0.6rem 3rem 0.6rem !important;
         }
         .apple-card-panel {
             padding: 18px 14px !important;
