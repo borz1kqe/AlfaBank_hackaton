@@ -17,15 +17,19 @@ import base64
 import json
 import re
 import io
+from html import escape as _h, unescape as _unh
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from xml.sax.saxutils import escape as xml_escape
 import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Any
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
+HERE = Path(__file__).resolve().parent
+for _p in (HERE, HERE.parent, Path.cwd()):
+    if (_p / "src").is_dir() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+ROOT_DIR = HERE.parent
 
 st.set_page_config(
     page_title="Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»",
@@ -35,9 +39,21 @@ st.set_page_config(
 )
 
 # Официальные шлюзы и ключи
-LLM_API_KEY = st.secrets.get("LLM_API_KEY") if hasattr(st, "secrets") and "LLM_API_KEY" in st.secrets else os.getenv("LLM_API_KEY", "sk-ARm7HMnjyUUX-_sG3Qsicw")
-LLM_BASE_URL = (st.secrets.get("LLM_BASE_URL") if hasattr(st, "secrets") and "LLM_BASE_URL" in st.secrets else os.getenv("LLM_BASE_URL", "https://changellenge.up.railway.app/v1")).rstrip("/")
-LLM_MODEL = st.secrets.get("LLM_MODEL") if hasattr(st, "secrets") and "LLM_MODEL" in st.secrets else os.getenv("LLM_MODEL", "deepseek/deepseek-v4.1-flash")
+def _secret(name: str, default: str = "") -> str:
+    try:
+        if name in st.secrets:
+            return str(st.secrets[name])
+    except Exception:
+        pass
+    return os.getenv(name, default)
+
+LLM_API_KEY = _secret("LLM_API_KEY", "sk-ARm7HMnjyUUX-_sG3Qsicw")
+LLM_BASE_URL = _secret("LLM_BASE_URL", "https://changellenge.up.railway.app/v1").rstrip("/")
+LLM_MODEL = _secret("LLM_MODEL", "deepseek/deepseek-v4.1-flash")
+# бэкенд (src/*) читает настройки из окружения
+for _k, _v in (("LLM_API_KEY", LLM_API_KEY), ("LLM_BASE_URL", LLM_BASE_URL), ("LLM_MODEL", LLM_MODEL)):
+    if _v:
+        os.environ.setdefault(_k, _v)
 
 PRIMARY_URL = "https://changellenge.up.railway.app/v1"
 BACKUP_URL = "https://api.alfahack-gateway26.ru/v1"
@@ -631,7 +647,8 @@ COMPANIES = [
         "revenue": 68_500_000_000.0,
         "market_position_label": "Лидер отрасли (Топ-10%)",
         "region": "Свердловская область",
-        "debt_preview": "24.8 млрд ₽ (плавающий долг)"
+        "debt_preview": "24.8 млрд ₽ (плавающий долг)",
+        "debt_bn": 24.8
     },
     {
         "synthetic_u": "U_1002",
@@ -641,7 +658,8 @@ COMPANIES = [
         "revenue": 42_000_000_000.0,
         "market_position_label": "Крупный отраслевой игрок",
         "region": "г. Москва",
-        "debt_preview": "14.2 млрд ₽ (лизинг и оборот)"
+        "debt_preview": "14.2 млрд ₽ (лизинг и оборот)",
+        "debt_bn": 14.2
     }
 ]
 
@@ -735,6 +753,87 @@ INSIGHTS = {
     }]
 }
 
+# ПОДКЛЮЧЕНИЕ БЭКЕНДА (вариант А: прямой вызов агента из src, отдельный сервер не нужен)
+BACKEND_OK = False
+BACKEND_ERR = ""
+try:
+    if os.getenv("ALFA_USE_RAG") != "1":
+        sys.modules.setdefault("src.services.rag_store", None)  # тяжёлый RAG в демо не нужен
+    from src.api.main import COMPANIES_DB, NEWS_DB, BANK_RESEARCH_DB, agent as BACKEND_AGENT
+    from src.services.agent import ROLE_PERSONAS
+    BACKEND_OK = True
+except Exception as _e:
+    BACKEND_ERR = f"{type(_e).__name__}: {_e}"
+
+MIN_RELEVANCE = 60  # события слабее этого порога в ленту не попадают
+
+def _adapt_insight(bi: dict, role_focus: str = "") -> dict:
+    """PersonalizedInsight (бэкенд) -> словарь, который понимает интерфейс. Весь текст экранируется."""
+    wh, wi, cq = bi["what_happened"], bi["why_important_for_company"], bi["consequences"]
+    be, ra, tr = bi["bank_evaluation"], bi["recommended_actions"], bi["traceability"]
+    prod = ra["native_bank_product"]
+    url = wh.get("source_url") or "#"
+    if not str(url).startswith("http"):
+        url = "#"
+    return {
+        "id": bi["insight_id"], "news_id": bi["news_id"],
+        "title": _h(wh["title"]), "date": _h(wh["published_at"]), "source": _h(wh["source_name"]),
+        "source_url": _h(url),
+        "facts": "<br>".join("• " + _h(f) for f in wh["facts"]), "facts_list": list(wh["facts"]),
+        "triggers": [_h(x) for x in wi["matched_company_features"]],
+        "summary": _h(wi["summary"]),
+        "impact": _h(wi.get("supply_chain_impact") or "прямых цепочечных эффектов не выявлено"),
+        "risks": [_h(x) for x in cq["risks"]], "opps": [_h(x) for x in cq["opportunities"]],
+        "alfa_quote": _h(be["alfa_bank_position"]), "alfa_report": _h(be["cited_report_title"]),
+        "alfa_forecast": "горизонт — " + _h(cq["horizon"]),
+        "ai_prediction": _h(be["ai_model_inference"]),
+        "ai_conf": f'{bi["relevance_score"]}/100', "ai_driver": _h(bi["urgency_badge"]),
+        "actions": [_h(x) for x in ra["steps_for_role"]],
+        "prod_badge": "Рекомендация банка", "prod_title": _h(prod["product_name"]),
+        "prod_desc": _h(prod["pitch"]), "prod_btn": _h(prod["cta_label"]),
+        "trace": [_h(f'{x["step_name"]}: {x["reasoning"]} [{x["tool_used"]}]') for x in tr["agent_steps"]],
+        "sources": [_h(x) for x in tr["used_sources"]], "models": [_h(x) for x in tr["llm_models_used"]],
+        "urgency": bi["urgency_badge"], "score": bi["relevance_score"], "role_focus": role_focus,
+    }
+
+@st.cache_resource
+def _feed_store() -> dict:
+    return {}
+
+def _build_feed(company_id: str, role_code: str) -> dict:
+    fallback = INSIGHTS.get(company_id, INSIGHTS["U_1001"])
+    if not BACKEND_OK:
+        return {"mode": "offline", "insights": fallback, "error": BACKEND_ERR}
+    try:
+        company = COMPANIES_DB[company_id]
+        llm = BACKEND_AGENT.llm
+        before = dict(getattr(llm, "stats", {"live": 0, "cached": 0, "fallback": 0}))
+        with ThreadPoolExecutor(max_workers=max(1, len(NEWS_DB))) as ex:
+            results = list(ex.map(
+                lambda n: BACKEND_AGENT.process_single_event(company, role_code, n, BANK_RESEARCH_DB), NEWS_DB))
+        after = dict(getattr(llm, "stats", before))
+        results = [r for r in results if r.relevance_score >= MIN_RELEVANCE]
+        results.sort(key=lambda r: r.relevance_score, reverse=True)
+        if not results:
+            raise ValueError("лента пуста")
+        focus = ROLE_PERSONAS.get(role_code, {}).get("focus", "")
+        ok = (after.get("live", 0) - before.get("live", 0)) + (after.get("cached", 0) - before.get("cached", 0))
+        bad = after.get("fallback", 0) - before.get("fallback", 0)
+        mode = "live" if (bad == 0 and ok > 0) else ("mixed" if ok > 0 else "deterministic")
+        return {"mode": mode, "insights": [_adapt_insight(r.model_dump(), focus) for r in results], "error": ""}
+    except Exception as e:
+        return {"mode": "offline", "insights": fallback, "error": f"{type(e).__name__}: {e}"}
+
+def get_feed(company_id: str, role_code: str) -> dict:
+    store = _feed_store()
+    key = (company_id, role_code)
+    hit = store.get(key)
+    if hit and time.time() - hit["ts"] < hit["ttl"]:
+        return hit["data"]
+    data = _build_feed(company_id, role_code)
+    store[key] = {"ts": time.time(), "ttl": 1800 if data["mode"] == "live" else 60, "data": data}
+    return data
+
 def _build_messages(system_msg: str, context: str, prompt: str, history: list = None) -> list:
     msgs = [{
         "role": "system",
@@ -752,6 +851,8 @@ def _build_messages(system_msg: str, context: str, prompt: str, history: list = 
 
 # ВЫЗОВ МОДЕЛИ С COOLDOWN-ЗАЩИТОЙ И 1800 ТОКЕНАМИ
 def call_live_llm(prompt: str, context: str, history: list = None) -> str:
+    if not LLM_API_KEY:
+        return None
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json"
@@ -790,6 +891,7 @@ def _build_ctx(company: dict, role: str, insight: dict) -> str:
         f"ОКВЭД: {company.get('main_okved_code')}\n"
         f"Выручка: {company.get('revenue')} руб., Кредитный долг: {company.get('debt_preview')}\n"
         f"Роль руководителя: {role}\n"
+        f"Фокус роли: {insight.get('role_focus', '')}\n"
         f"Событие: {insight.get('title')}\n"
         f"Позиция Альфа-Банка: {insight.get('alfa_quote')}"
     )
@@ -816,6 +918,8 @@ def ask_ai_chat(company: dict, role: str, insight: dict, question: str, history:
 
 # ПОТОКОВЫЙ ВЫВОД: ответ появляется по мере генерации (SSE)
 def stream_live_llm(prompt: str, context: str, history: list = None):
+    if not LLM_API_KEY:
+        return
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json"
@@ -931,7 +1035,7 @@ def compute_swap(amount_bn: float, swap_rate: float) -> dict:
         "irs_cost_2027": after_year, "sc_cost": sc_cost,
     }
 
-def render_swap_calculator(ins: dict) -> dict:
+def render_swap_calculator(ins: dict, max_bn: float = 24.8, company_id: str = "U_1001") -> dict:
     st.markdown(
         '<div style="font-size:0.92rem;font-weight:700;color:#111827;margin:18px 0 4px 0;">Калькулятор процентного свопа (IRS)</div>'
         f'<div style="font-size:0.8rem;color:#6B7280;margin-bottom:8px;">Формула: сумма × (ставка + спред {SWAP_SPREAD}%) ÷ 12. '
@@ -940,9 +1044,9 @@ def render_swap_calculator(ins: dict) -> dict:
     )
     s1, s2 = st.columns(2)
     with s1:
-        amount_bn = st.slider("Сумма транша, млрд ₽", 0.5, 24.8, 5.0, 0.1, key=f"swap_amt_{ins['id']}")
+        amount_bn = st.slider("Сумма транша, млрд ₽", 0.5, float(max_bn), min(5.0, float(max_bn)), 0.1, key=f"swap_amt_{company_id}")
     with s2:
-        swap_rate = st.slider("Фиксированная ставка свопа, %", 9.0, 16.0, 12.6, 0.1, key=f"swap_rate_{ins['id']}")
+        swap_rate = st.slider("Фиксированная ставка свопа, %", 9.0, 16.0, 12.6, 0.1, key=f"swap_rate_{company_id}")
     r = compute_swap(amount_bn, swap_rate)
 
     k1, k2, k3 = st.columns(3)
@@ -1032,7 +1136,7 @@ def build_cfo_brief_pdf(company: dict, role: str, ins: dict, swap: dict = None):
 
     red = colors.HexColor("#EF3124")
     grey = colors.HexColor("#6B7280")
-    e = xml_escape
+    e = lambda x: xml_escape(_unh(str(x)))
     body = ParagraphStyle("b", fontName="AlfaSans", fontSize=9.5, leading=13, textColor=colors.HexColor("#111827"))
     small = ParagraphStyle("s", parent=body, fontSize=8, leading=10.5, textColor=grey)
     lbl = ParagraphStyle("l", parent=body, fontName="AlfaSans-Bold", fontSize=9, textColor=red)
@@ -1044,7 +1148,7 @@ def build_cfo_brief_pdf(company: dict, role: str, ins: dict, swap: dict = None):
 
     risks = [P("• " + e(r_)) for r_ in ins["risks"]]
     actions = [P(f"{i}. " + e(a_)) for i, a_ in enumerate(ins["actions"], 1)]
-    event = [P(e(ins["title"]), title), Spacer(1, 2), P(e(ins["facts"])),
+    event = [P(e(ins["title"]), title), Spacer(1, 2), P(e(" ".join(ins.get("facts_list") or [ins["facts"]]))),
              Spacer(1, 2), P(f"{e(ins['date'])} • Источник: {e(ins['source'])}", small)]
     product = [P(e(ins["prod_title"]), title), Spacer(1, 2), P(e(ins["prod_desc"]))]
     if swap:
@@ -1139,6 +1243,9 @@ with st.sidebar:
     st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
     st.caption("БЕЗОПАСНЫЙ КОНТУР")
     st.markdown(f"<div style='font-size:0.75rem;color:#9CA3AF;'>Модель: <b>{LLM_MODEL.split('/')[-1]}</b><br>Лимит: <b>1800 токенов (Safe)</b></div>", unsafe_allow_html=True)
+    if st.button("Обновить аналитику", key="refresh_feed"):
+        _feed_store().clear()
+        st.rerun()
 
 # ЗАПАСНАЯ КНОПКА ОТКРЫТИЯ ШТОРКИ (появляется, только когда шторка свёрнута)
 _SIDEBAR_BTN_JS = """
@@ -1250,7 +1357,9 @@ else:
     )
     st.markdown(kpi_html, unsafe_allow_html=True)
 
-    insights = INSIGHTS.get(company_id, INSIGHTS["U_1001"])
+    with st.spinner(f"AI-агент готовит аналитику для роли «{selected_role_label}»…"):
+        feed = get_feed(company_id, current_role_code)
+    insights = feed["insights"]
     entry_html = (
         '<div class="apple-hero-banner">'
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px;">'
@@ -1262,12 +1371,25 @@ else:
     )
     st.markdown(entry_html, unsafe_allow_html=True)
 
+    _MODES = {
+        "live": ("#166534", "#F6FDF8", "#DCFCE7", "● Аналитика сформирована AI-агентом в реальном времени"),
+        "mixed": ("#92400E", "#FFFBEB", "#FDE68A", "● Часть аналитики сформирована AI-агентом, часть — детерминированным синтезом"),
+        "deterministic": ("#92400E", "#FFFBEB", "#FDE68A", "● Режим без LLM: аналитика собрана по правилам из профиля клиента (шлюз ИИ недоступен)"),
+        "offline": ("#991B1B", "#FFF8F8", "#FEE2E2", "● Офлайн-режим: бэкенд недоступен, показаны заготовленные данные"),
+    }
+    _c, _bg, _bd, _txt = _MODES.get(feed["mode"], _MODES["offline"])
+    _err = f' <span style="opacity:0.7;font-weight:400;">({_h(feed["error"][:110])})</span>' if feed.get("error") else ""
+    st.markdown(
+        f'<div style="background:{_bg};border:1px solid {_bd};color:{_c};border-radius:12px;padding:8px 14px;'
+        f'font-size:0.8rem;font-weight:600;margin:-8px 0 16px 0;">{_txt}{_err}</div>',
+        unsafe_allow_html=True)
+
     for ins in insights:
         st.markdown('<div class="apple-card-panel">', unsafe_allow_html=True)
         
         card_header = (
             '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">'
-            '<span class="apple-badge-crit">Высокий приоритет</span>'
+            f'<span class="apple-badge-crit">{ins.get("urgency", "Высокий приоритет")}</span>'
             f'<span style="font-size:0.8rem;color:#6B7280;">{ins["date"]} &nbsp;•&nbsp; Источник: <b>{ins["source"]}</b></span>'
             '</div>'
             f'<div class="apple-title-h2">{ins["title"]}</div>'
@@ -1291,6 +1413,7 @@ else:
             b2_html = (
                 '<div class="apple-subbox">'
                 f'<div style="margin-bottom:6px;">{pills}</div>'
+                + (f'<div style="font-size:0.84rem;color:#374151;margin-bottom:8px;line-height:1.45;">{ins["summary"]}</div>' if ins.get("summary") else '') +
                 f'<div style="font-size:0.84rem;color:#4B5563;border-top:1px solid #E5E7EB;padding-top:6px;"><b>Влияние на цепочку контрагентов:</b> {ins["impact"]}</div>'
                 '</div>'
             )
@@ -1327,7 +1450,7 @@ else:
                 '<div class="apple-box-ai">'
                 f'<div style="font-weight:700;color:#EF3124;font-size:0.9rem;margin-bottom:6px;">{SVG["sparkles"]} Персонализированный AI-вывод для предприятия</div>'
                 f'<div style="font-size:0.88rem;color:#1E293B;margin-bottom:8px;line-height:1.45;">{ins["ai_prediction"]}</div>'
-                f'<div style="font-size:0.75rem;color:#991B1B;">Уверенность модели: <b>{ins["ai_conf"]}</b> &nbsp;•&nbsp; Драйвер: {ins["ai_driver"]}</div>'
+                f'<div style="font-size:0.75rem;color:#991B1B;">{"Релевантность для компании" if ins.get("score") else "Уверенность модели"}: <b>{ins["ai_conf"]}</b> &nbsp;•&nbsp; {"Срочность" if ins.get("score") else "Драйвер"}: {ins["ai_driver"]}</div>'
                 '</div>'
             )
             st.markdown(ai_html, unsafe_allow_html=True)
@@ -1359,8 +1482,8 @@ else:
         """, unsafe_allow_html=True)
 
         swap_res = None
-        if ins["id"] == "ins_cbr_1001":
-            swap_res = render_swap_calculator(ins)
+        if ins.get("news_id") == "news_101" or ins["id"] == "ins_cbr_1001":
+            swap_res = render_swap_calculator(ins, current_company.get("debt_bn", 24.8), company_id)
 
         st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
         
@@ -1389,7 +1512,13 @@ else:
         with st.expander("Аудит-лог и происхождение выводов (Traceability)"):
             st.caption("Пошаговый протокол рассуждения многошагового агента:")
             for t in ins["trace"]:
-                st.markdown(f"• {t}")
+                st.markdown(f"• {t}", unsafe_allow_html=True)
+            if ins.get("sources"):
+                st.caption("Использованные источники:")
+                for src_line in ins["sources"]:
+                    st.markdown(f"• {src_line}", unsafe_allow_html=True)
+            if ins.get("models"):
+                st.caption("Модели (по регламенту): " + ", ".join(ins["models"]))
 
         st.markdown("<hr style='border:none;border-top:1px solid #E5E7EB;margin:20px 0;'>", unsafe_allow_html=True)
 
