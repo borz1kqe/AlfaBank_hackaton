@@ -819,7 +819,8 @@ def stream_live_llm(prompt: str, context: str, history: list = None):
         "1. ВСЕГДА заканчивай свою мысль и предложения полностью. Никаких обрывов текста.\n"
         "2. Если пользователь просто здоровается или обращается неформально: "
         "с достоинством поприветствуй его и сразу же переведи разговор в деловое русло, кратко обозначив 2 главных финансовых риска текущей компании по ставке 14% и спросив, какой показатель рассчитать детально.\n"
-        "3. Если задан конкретный вопрос — дай глубокий расчет с цифрами компании, влиянием на прибыль и решением от Альфа-Банка."
+        "3. Если задан конкретный вопрос — дай глубокий расчет с цифрами компании, влиянием на прибыль и решением от Альфа-Банка.\n"
+        "5. Уложись примерно в 250–300 слов: лучше короткий законченный ответ, чем длинный оборванный."
     )
     payload = {
         "model": LLM_MODEL,
@@ -830,8 +831,10 @@ def stream_live_llm(prompt: str, context: str, history: list = None):
     }
     for url in [f"{PRIMARY_URL}/chat/completions", f"{BACKUP_URL}/chat/completions"]:
         got = False
+        finished = False
+        truncated = False
         try:
-            with requests.post(url, headers=headers, json=payload, stream=True, timeout=(5, 20)) as r:
+            with requests.post(url, headers=headers, json=payload, stream=True, timeout=(5, 45)) as r:
                 if r.status_code != 200:
                     continue
                 ctype = r.headers.get("Content-Type", "")
@@ -850,18 +853,29 @@ def stream_live_llm(prompt: str, context: str, history: list = None):
                         continue
                     data = line[5:].strip()
                     if data == "[DONE]":
+                        finished = True
                         break
                     try:
-                        delta = json.loads(data)["choices"][0]["delta"].get("content") or ""
+                        ch = json.loads(data)["choices"][0]
+                        delta = (ch.get("delta") or {}).get("content") or ""
+                        fr = ch.get("finish_reason")
                     except Exception:
                         continue
+                    if fr:
+                        finished = True
+                        truncated = (fr == "length")
                     if delta:
                         got = True
                         yield delta
             if got:
+                if truncated:
+                    yield "\n\n*…ответ обрезан по лимиту длины. Нажмите «Спросить» ещё раз или напишите «продолжи».*"
+                elif not finished:
+                    yield "\n\n*…соединение со шлюзом прервалось, ответ неполный. Повторите вопрос.*"
                 return
         except Exception:
             if got:
+                yield "\n\n*…соединение со шлюзом прервалось, ответ неполный. Повторите вопрос.*"
                 return
             continue
 
