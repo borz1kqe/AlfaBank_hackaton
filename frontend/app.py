@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»
-Полная интеграция с Multi-Agent FastAPI Backend (Роли 1 и 2)
-Дизайн-система: Apple HIG + Alfa-Bank Titanium
+Дизайн: Apple Fintech (Сдержанные акценты, интерактивные чипы, идеальная сетка)
 """
 
 import streamlit as st
@@ -19,6 +18,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Определение бэкенда
 ENV_BACKEND = os.getenv("API_BASE_URL") or os.getenv("BACKEND_URL")
 BACKEND_CANDIDATES = [
     ENV_BACKEND,
@@ -32,7 +32,7 @@ def get_backend_url() -> str:
         if not base:
             continue
         try:
-            r = requests.get(f"{base}/health", timeout=0.4)
+            r = requests.get(f"{base}/health", timeout=0.3)
             if r.status_code == 200:
                 return base
         except Exception:
@@ -58,23 +58,23 @@ def get_logo_html() -> str:
                 pass
     return '<span style="background:#EF3124;color:#FFFFFF;padding:4px 10px;border-radius:6px;font-weight:900;font-size:0.9rem;margin-right:10px;">А</span>'
 
+# БЛАГОРОДНЫЙ ДИЗАЙН: СПОКОЙНЫЕ КНОПКИ, ЧИПЫ APPLE, НИКАКОГО ЯДОВИТОГО КРАСНОГО
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
     header, #MainMenu, footer { visibility: hidden; height: 0; }
 
-    /* ФИКС: УБИРАЕМ ТЕКСТОВЫЙ БАГ keyboard_double_ И КНОПКУ СВОРАЧИВАНИЯ */
+    /* Убираем баг с текстом сворачивания шторки */
     [data-testid="stSidebarCollapseButton"],
     button[data-testid="stSidebarCollapseButton"],
-    [data-testid="stSidebarHeader"] button,
     [data-testid="stSidebarHeader"] {
         display: none !important;
         visibility: hidden !important;
         height: 0 !important;
     }
 
-    /* 1. ЛЕВАЯ ШТОРКА (ГРАФИТОВО-ЧЕРНЫЙ TITANIUM) */
+    /* 1. ШТОРКА (ГРАФИТОВЫЙ ЧЕРНЫЙ) */
     [data-testid="stSidebar"] {
         background-color: #111827 !important;
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -82,7 +82,7 @@ st.markdown("""
     [data-testid="stSidebar"] .block-container {
         padding: 1.5rem 1.2rem !important;
     }
-    [data-testid="stSidebar"] div:not([data-testid="stSidebarCollapseButton"]), 
+    [data-testid="stSidebar"] div, 
     [data-testid="stSidebar"] p, 
     [data-testid="stSidebar"] span {
         color: #F9FAFB;
@@ -123,7 +123,7 @@ st.markdown("""
         border-radius: 0 10px 10px 0;
     }
 
-    /* 2. ОСНОВНОЙ ЭКРАН (APPLE CANVAS) */
+    /* 2. ОСНОВНОЙ ЭКРАН */
     [data-testid="stAppViewContainer"], .stApp {
         background-color: #F5F5F7 !important;
         color: #1D1D1F !important;
@@ -241,28 +241,51 @@ st.markdown("""
         padding: 18px 22px;
         height: 100%;
     }
+
+    /* КАРТОЧКА ПРОДУКТА: ЕДИНЫЙ ТЕМНЫЙ БАННЕР С ВНУТРЕННЕЙ КНОПКОЙ */
+    .titanium-offer-card {
+        background: #111827;
+        border-radius: 16px;
+        padding: 22px 26px;
+        margin-top: 18px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    }
+
+    /* АККУРАТНЫЕ КНОПКИ APPLE: НИКАКОГО ЯДОВИТО-КРАСНОГО */
     div.stButton > button {
-        background-color: #EF3124 !important;
-        color: #FFFFFF !important;
-        border-radius: 10px !important;
-        border: none !important;
-        font-weight: 600 !important;
-        font-size: 0.88rem !important;
-        padding: 8px 18px !important;
-        transition: opacity 0.15s ease !important;
+        background-color: #FFFFFF !important;
+        color: #1F2937 !important;
+        border: 1px solid #D1D5DB !important;
+        border-radius: 980px !important;
+        font-weight: 500 !important;
+        font-size: 0.85rem !important;
+        padding: 7px 18px !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+        transition: all 0.15s ease !important;
     }
     div.stButton > button:hover {
-        opacity: 0.9 !important;
+        background-color: #F3F4F6 !important;
+        border-color: #9CA3AF !important;
+        color: #111827 !important;
     }
+
+    /* Главная кнопка отправки запроса — графитовая */
+    div[data-testid="stButton"] button[kind="primary"],
+    button[key*="ask"] {
+        background-color: #111827 !important;
+        color: #FFFFFF !important;
+        border: none !important;
+    }
+
     .stTextInput input {
         background-color: #FFFFFF !important;
         color: #111827 !important;
         border: 1px solid #D1D5DB !important;
-        border-radius: 10px !important;
-        padding: 10px 14px !important;
+        border-radius: 12px !important;
+        padding: 11px 16px !important;
     }
     .chat-label-text {
-        font-size: 0.92rem;
+        font-size: 0.95rem;
         font-weight: 600;
         color: #111827;
         margin-bottom: 8px;
@@ -270,7 +293,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Иконки SVG
+# Векторные монохромные иконки
 SVG = {
     "lightning": '<svg width="15" height="15" viewBox="0 0 24 24" fill="#EF3124" stroke="#EF3124" stroke-width="1" style="vertical-align:-2px;margin-right:6px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
     "shield": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:6px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
@@ -307,7 +330,7 @@ FALLBACK_COMPANIES = [
 def fetch_companies_from_api() -> List[Dict[str, Any]]:
     backend = get_backend_url()
     try:
-        r = requests.get(f"{backend}/api/companies", timeout=1.2)
+        r = requests.get(f"{backend}/api/companies", timeout=1.0)
         if r.status_code == 200:
             data = r.json()
             comp_list = data.get("companies", [])
@@ -322,7 +345,7 @@ def fetch_companies_from_api() -> List[Dict[str, Any]]:
 def fetch_feed_from_api(company_id: str, role: str) -> List[Dict[str, Any]]:
     backend = get_backend_url()
     try:
-        r = requests.get(f"{backend}/api/feed", params={"company_id": company_id, "role": role}, timeout=3.5)
+        r = requests.get(f"{backend}/api/feed", params={"company_id": company_id, "role": role}, timeout=3.0)
         if r.status_code == 200:
             raw_insights = r.json()
             adapted = []
@@ -359,7 +382,7 @@ def fetch_feed_from_api(company_id: str, role: str) -> List[Dict[str, Any]]:
                     "prod_badge": ins.get("urgency_badge", "Критично"),
                     "prod_title": prod.get("product_name", "Хеджирование процентных рисков (IRS Альфа-Банк)"),
                     "prod_desc": prod.get("pitch", "Зафиксируйте ставку по кредитам с плавающей ставкой на уровне 12.6% на 24 месяца."),
-                    "prod_btn": prod.get("cta_label", "Рассчитать параметры хеджа"),
+                    "prod_btn": prod.get("cta_label", "Рассчитать параметры свопа"),
                     "trace": [f"{s.get('step_name')}: {s.get('reasoning')}" for s in tr.get("agent_steps", [])] if tr.get("agent_steps") else [
                         "Planning: определение типа события (ДКП) и заемного профиля компании",
                         "Tool Execution: извлечение кредитного договора №ALF-774 и макро-отчета Альфа-Банка",
@@ -408,7 +431,7 @@ def fetch_feed_from_api(company_id: str, role: str) -> List[Dict[str, Any]]:
         "prod_badge": "Критично",
         "prod_title": "Хеджирование процентных рисков (IRS Альфа-Банк)",
         "prod_desc": "Зафиксируйте процентную ставку по кредитам с плавающей ставкой на уровне 12.6% на срок до 24 месяцев.",
-        "prod_btn": "Рассчитать параметры хеджа",
+        "prod_btn": "Рассчитать параметры свопа",
         "trace": [
             "Planning: анализ регуляторного события по ДКП и долгового портфеля",
             "Tool Execution: выгрузка контракта U_1001 и макро-отчета Центра исследований",
@@ -433,17 +456,30 @@ def post_chat_to_api(company_id: str, role: str, insight_id: str, question: str)
     except Exception:
         pass
 
-    q_low = question.lower()
-    if "долг" in q_low or "нагрузк" in q_low:
-        return "**Анализ долговой нагрузки (Финансовый департамент):**\n\n• Сохранение ставки на уровне 14.0% фиксирует ежемесячные процентные платежи на уровне **48.2 млн руб.**\n• Несостоявшееся снижение ставки на 100 б.п. лишает компанию расчетной экономии в **3.45 млн руб. в месяц**.\n• Коэффициент покрытия долга (ICR) составит **3.15x** (минимальный ковенантный порог: 2.80x).\n• **Рекомендация:** перевести 5.0 млрд руб. кредитного портфеля в фиксированную ставку 12.6% через IRS Альфа-Банка."
-    return "**Аналитический ассистент Альфа-Инсайт:**\n\nНа основе сопоставления профиля компании и макро-отчета Альфа-Банка, удержание жестких условий требует балансировки оборотного капитала. Рекомендуем запросить моделирование индивидуального лимита у корпоративного банкира в Альфа-Бизнес."
+    # Умная обработка для демо (если бэк в облаке недоступен)
+    q_clean = question.strip().lower()
+    
+    # Защита от бессмысленного ввода (типа "цуй", "123")
+    if len(q_clean) < 4 or q_clean in ["цуй", "тест", "йцук", "фыва", "привет", "asdf"]:
+        return "Пожалуйста, задайте вопрос по финансово-экономическому влиянию новости на компанию (например: о долговой нагрузке, цепочках поставок, рисках ВЭД или ликвидности)."
+
+    if any(w in q_clean for w in ["долг", "нагрузк", "ставк", "процент", "кредит"]):
+        return "**Аналитический расчет долговой нагрузки (CFO View):**\n\n• Сохранение ставки на уровне 14.0% фиксирует ежемесячные платежи компании на уровне **48.2 млн руб.**\n• Отсутствие снижения ставки лишает расчетной экономии в **3.45 млн руб. в месяц**.\n• Коэффициент покрытия долга (ICR) составит **3.15x** (ковенантный порог: 2.80x).\n• **Рекомендация:** перевести 5.0 млрд руб. кредитного портфеля в фиксированную ставку 12.6% через IRS Альфа-Банка."
+    
+    if any(w in q_clean for w in ["поставщ", "покупател", "контрагент", "клиент", "цепочк"]):
+        return "**Анализ цепочки контрагентов:**\n\n1. Покупатели строительного сектора (контрагент U_3012) пролонгируют отсрочку расчетов на **30 дней** из-за паузы в удешевлении ипотеки и кредитов.\n2. Ж/д операторы индексируют тарифы на **9–12%**, что увеличит транспортные расходы на 14.2 млн руб./мес.\n• **Рекомендация:** предложить контрагентам факторинг от Альфа-Банка для разблокировки оборотного капитала."
+
+    if any(w in q_clean for w in ["вэд", "валют", "китай", "юан", "курс"]):
+        return "**Оценка рисков ВЭД:**\n\n• Волатильность валютных курсов (CNY, AED) создает риск кассовых разрывов при экспортных поставках.\n• **Рекомендация:** подключить валютный форвард Альфа-Банка для фиксации курса конвертации экспортной выручки."
+
+    return f"**Аналитический ассистент Альфа-Инсайт:**\n\nПо запросу *«{question}»*: с учетом макроэкономических ориентиров Альфа-Банка и масштаба предприятия (выручка >68 млрд руб.), данное событие требует координации финансового и коммерческого блоков. Рекомендуем вынести вопрос на заседание бюджетного комитета."
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = {}
 if "applied_products" not in st.session_state:
     st.session_state.applied_products = set()
 
-# 1. ТЕМНАЯ ШТОРКА
+# 1. ШТОРКА (ГРАФИТОВЫЙ TITANIUM)
 with st.sidebar:
     st.markdown(f'<div style="display:flex;align-items:center;margin-bottom:20px;">{get_logo_html()}<span style="font-weight:700;font-size:1.1rem;letter-spacing:-0.02em;">АЛЬФА-БИЗНЕС</span></div>', unsafe_allow_html=True)
     
@@ -584,26 +620,26 @@ for ins in insights:
     for s_idx, act in enumerate(ins["actions"], 1):
         st.checkbox(f"Шаг {s_idx}: {act}", key=f"step_{ins['id']}_{s_idx}")
 
-    prod_col_text, prod_col_btn = st.columns([3, 1])
-    prod_html = (
-        '<div style="background:#111827;color:#FFFFFF;border-radius:14px;padding:20px 24px;height:100%;">'
-        f'<span style="background:#EF3124;color:#FFFFFF;padding:3px 8px;border-radius:6px;font-size:0.7rem;font-weight:700;">{ins["prod_badge"]}</span>'
-        f'<div style="font-size:1.15rem;font-weight:700;margin-top:6px;">{ins["prod_title"]}</div>'
-        f'<div style="font-size:0.85rem;color:#9CA3AF;margin-top:4px;line-height:1.4;">{ins["prod_desc"]}</div>'
-        '</div>'
-    )
-    with prod_col_text:
-        st.markdown(prod_html, unsafe_allow_html=True)
-    with prod_col_btn:
-        st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
+    # БАНКОВСКИЙ ОФФЕР: КНОПКА ВСТРОЕНА ВНУТРЬ ПЛАШКИ
+    st.markdown('<div class="titanium-offer-card">', unsafe_allow_html=True)
+    col_off_text, col_off_btn = st.columns([3, 1.2])
+    with col_off_text:
+        st.markdown(f"""
+        <span style="background:#EF3124;color:#FFFFFF;padding:3px 8px;border-radius:6px;font-size:0.7rem;font-weight:700;">{ins["prod_badge"]}</span>
+        <div style="font-size:1.15rem;font-weight:700;color:#FFFFFF;margin-top:6px;">{ins["prod_title"]}</div>
+        <div style="font-size:0.85rem;color:#9CA3AF;margin-top:4px;line-height:1.4;">{ins["prod_desc"]}</div>
+        """, unsafe_allow_html=True)
+    with col_off_btn:
+        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
         pk = f"prod_{ins['id']}"
         if pk in st.session_state.applied_products:
-            st.success("Заявка направлена банкиру")
+            st.success("✓ Заявка отправлена")
         else:
             if st.button(f"{ins['prod_btn']}", key=f"btn_{pk}"):
                 st.session_state.applied_products.add(pk)
                 st.balloons()
                 st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
@@ -612,8 +648,9 @@ for ins in insights:
         for t in ins["trace"]:
             st.markdown(f"• {t}")
 
+    # ИНТЕРАКТИВНЫЙ ЧАТ: АККУРАТНЫЕ ЧИПЫ APPLE
     st.markdown("<hr style='border:none;border-top:1px solid #E5E7EB;margin:22px 0;'>", unsafe_allow_html=True)
-    st.markdown('<div class="chat-label-text">Задать уточняющий вопрос AI-аналитику по новости:</div>', unsafe_allow_html=True)
+    st.markdown('<div class="chat-label-text">Задать уточняющий вопрос AI-аналитику:</div>', unsafe_allow_html=True)
 
     q1, q2 = st.columns(2)
     selected_preset = None
@@ -622,19 +659,25 @@ for ins in insights:
     if q2.button("Оценить риски цепочки контрагентов", key=f"q2_{ins['id']}"):
         selected_preset = "Как это отразится на наших поставщиках и покупателях?"
 
-    u_query = st.text_input("Вопрос", key=f"inp_{ins['id']}", placeholder="Например: 'Какой размер финансового буфера подготовить к 4 кварталу?'", label_visibility="collapsed")
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+    
+    col_input, col_submit = st.columns([4, 1.2])
+    with col_input:
+        u_query = st.text_input("Вопрос", key=f"inp_{ins['id']}", placeholder="Спросите о ликвидности, кредитах или валюте...", label_visibility="collapsed")
+    with col_submit:
+        ask_clicked = st.button("Спросить", key=f"ask_{ins['id']}")
 
-    if st.button("Спросить AI-аналитика", key=f"ask_{ins['id']}") or selected_preset:
+    if ask_clicked or selected_preset:
         txt = selected_preset if selected_preset else u_query
         if txt:
-            with st.spinner("AI-агент рассчитывает финансовые показатели..."):
+            with st.spinner("AI-агент анализирует финансовый контекст..."):
                 ans = post_chat_to_api(company_id, current_role_code, ins["id"], txt)
                 st.session_state.chat_history[ins['id']] = {"q": txt, "a": ans}
 
     if ins['id'] in st.session_state.chat_history:
         h = st.session_state.chat_history[ins['id']]
-        st.markdown(f"<div style='background:#F3F4F6;border-radius:10px;padding:12px 16px;margin:12px 0 8px 0;font-size:0.9rem;'><b>Ваш запрос:</b> {h['q']}</div>", unsafe_allow_html=True)
-        st.markdown(h['a'])
+        st.markdown(f"<div style='background:#F3F4F6;border-radius:12px;padding:12px 16px;margin:12px 0 8px 0;font-size:0.9rem;'><b>Вы:</b> {h['q']}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='background:#FFFFFF;border:1px solid #E5E7EB;border-radius:14px;padding:16px 20px;font-size:0.92rem;line-height:1.55;color:#1F2937;'>{h['a']}</div>", unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
