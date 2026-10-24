@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»
-Дизайн: Выдвижная шторка (Desktop + Mobile Drawer) без шрифтовых багов
+Live AI Multi-Model Router: Контрастная кнопка шторки, Cooldown-защита и 1800 токенов
 """
 
 import streamlit as st
 import requests
 import os
 import sys
+import time
 import base64
 from pathlib import Path
 from typing import Dict, List, Any
@@ -16,7 +17,6 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-# Шторка адаптируется автоматически: на ПК раскрыта, на смартфонах свернута
 st.set_page_config(
     page_title="Альфа-Инсайт | Интернет-банк «Альфа-Бизнес»",
     page_icon="https://alfabank.servicecdn.ru/icons/corp/favicons/favicon.ico",
@@ -24,7 +24,7 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-# Ключи и настройки
+# Официальные шлюзы и ключи
 LLM_API_KEY = st.secrets.get("LLM_API_KEY") if hasattr(st, "secrets") and "LLM_API_KEY" in st.secrets else os.getenv("LLM_API_KEY", "sk-ARm7HMnjyUUX-_sG3Qsicw")
 LLM_BASE_URL = (st.secrets.get("LLM_BASE_URL") if hasattr(st, "secrets") and "LLM_BASE_URL" in st.secrets else os.getenv("LLM_BASE_URL", "https://changellenge.up.railway.app/v1")).rstrip("/")
 LLM_MODEL = st.secrets.get("LLM_MODEL") if hasattr(st, "secrets") and "LLM_MODEL" in st.secrets else os.getenv("LLM_MODEL", "deepseek/deepseek-v4.1-flash")
@@ -56,7 +56,6 @@ def get_logo_html() -> str:
                 pass
     return '<span style="background:#EF3124;color:#FFFFFF;padding:4px 9px;border-radius:6px;font-weight:900;font-size:0.85rem;margin-right:8px;">А</span>'
 
-# CSS С ВЫДВИЖНОЙ ШТОРКОЙ ДЛЯ ПК И ТЕЛЕФОНОВ
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -66,13 +65,12 @@ st.markdown("""
         visibility: hidden !important;
     }
 
-    /* ФИКС СИСТЕМНОЙ КНОПКИ ВЫЗОВА ШТОРКИ */
     header[data-testid="stHeader"] {
         background: transparent !important;
         height: 0 !important;
     }
 
-    /* Кнопка открытия шторки на основном экране */
+    /* ЯРКАЯ КОНТРАСТНАЯ КНОПКА ОТКРЫТИЯ ШТОРКИ */
     [data-testid="stSidebarCollapsedControl"] {
         display: flex !important;
         visibility: visible !important;
@@ -84,23 +82,32 @@ st.markdown("""
     [data-testid="stSidebarCollapsedControl"] button {
         background-color: #111827 !important;
         color: #FFFFFF !important;
-        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        border: 1px solid rgba(255, 255, 255, 0.25) !important;
         border-radius: 12px !important;
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15) !important;
-        padding: 6px 14px !important;
-        height: 38px !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+        padding: 8px 16px !important;
+        height: 40px !important;
+        min-width: 120px !important;
+        cursor: pointer !important;
+        transition: all 0.2s ease !important;
     }
-    [data-testid="stSidebarCollapsedControl"] button span {
+    [data-testid="stSidebarCollapsedControl"] button:hover {
+        background-color: #1F2937 !important;
+        border-color: #EF3124 !important;
+        transform: translateY(-1px) !important;
+    }
+    [data-testid="stSidebarCollapsedControl"] button span,
+    [data-testid="stSidebarCollapsedControl"] button svg {
         display: none !important;
     }
     [data-testid="stSidebarCollapsedControl"] button::after {
-        content: "› Меню" !important;
+        content: "Меню банка ›" !important;
         font-size: 13px !important;
-        font-weight: 600 !important;
+        font-weight: 700 !important;
         color: #FFFFFF !important;
     }
 
-    /* Кнопка закрытия шторки внутри самой шторки */
+    /* Кнопка закрытия внутри шторки */
     [data-testid="stSidebarHeader"] button,
     [data-testid="stSidebarCollapseButton"] {
         background: rgba(255, 255, 255, 0.08) !important;
@@ -122,11 +129,10 @@ st.markdown("""
         line-height: 1 !important;
     }
 
-    /* ВЫДВИЖНАЯ ШТОРКА (TITANIUM BLACK) */
+    /* ШТОРКА (TITANIUM BLACK) */
     [data-testid="stSidebar"] {
         background-color: #111827 !important;
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
-        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }
     [data-testid="stSidebar"] .block-container {
         padding: 1.2rem 1rem !important;
@@ -330,31 +336,29 @@ st.markdown("""
         min-height: 44px !important;
     }
 
+    /* ЧАТ */
     .chat-bubble-user {
         background: #E5E7EB;
         border-radius: 16px 16px 4px 16px;
-        padding: 12px 16px;
+        padding: 12px 18px;
         font-size: 0.9rem;
         color: #111827;
         margin: 14px 0 10px auto;
         max-width: 85%;
         width: fit-content;
     }
-    .chat-bubble-ai {
+    .chat-bubble-ai-wrap {
         background: #FFFFFF;
         border: 1px solid #E5E7EB;
         border-radius: 16px 16px 16px 4px;
-        padding: 16px 20px;
-        font-size: 0.92rem;
-        line-height: 1.6;
-        color: #111827;
+        padding: 18px 22px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.03);
-        max-width: 95%;
+        margin-bottom: 12px;
     }
 
     @media (max-width: 768px) {
         div.block-container {
-            padding: 2.5rem 0.6rem 3rem 0.6rem !important;
+            padding: 2.8rem 0.6rem 3rem 0.6rem !important;
         }
         .apple-card-panel {
             padding: 18px 14px !important;
@@ -493,6 +497,7 @@ INSIGHTS = {
     }]
 }
 
+# ВЫЗОВ МОДЕЛИ С COOLDOWN-ЗАЩИТОЙ И 1800 ТОКЕНАМИ
 def call_live_llm(prompt: str, context: str) -> str:
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
@@ -514,12 +519,12 @@ def call_live_llm(prompt: str, context: str) -> str:
             {"role": "user", "content": f"Контекст предприятия:\n{context}\n\nВопрос руководителя:\n{prompt}"}
         ],
         "temperature": 0.3,
-        "max_tokens": 1200
+        "max_tokens": 1800
     }
     
     for url in [f"{PRIMARY_URL}/chat/completions", f"{BACKUP_URL}/chat/completions"]:
         try:
-            r = requests.post(url, headers=headers, json=payload, timeout=18.0)
+            r = requests.post(url, headers=headers, json=payload, timeout=20.0)
             if r.status_code == 200:
                 res_data = r.json()
                 content = res_data["choices"][0]["message"]["content"]
@@ -563,8 +568,10 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = {}
 if "applied_products" not in st.session_state:
     st.session_state.applied_products = set()
+if "last_api_call" not in st.session_state:
+    st.session_state.last_api_call = 0.0
 
-# ВЫДВИЖНАЯ ШТОРКА
+# ШТОРКА
 with st.sidebar:
     st.markdown(f'<div style="display:flex;align-items:center;margin-bottom:20px;">{get_logo_html()}<span style="font-weight:700;font-size:1.05rem;letter-spacing:-0.02em;">АЛЬФА-БИЗНЕС</span></div>', unsafe_allow_html=True)
     
@@ -596,7 +603,7 @@ with st.sidebar:
 
     st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
     st.caption("БЕЗОПАСНЫЙ КОНТУР")
-    st.markdown(f"<div style='font-size:0.75rem;color:#9CA3AF;'>Модель: <b>{LLM_MODEL.split('/')[-1]}</b><br>Шлюз: <b>Live 1200 Tokens</b></div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='font-size:0.75rem;color:#9CA3AF;'>Модель: <b>{LLM_MODEL.split('/')[-1]}</b><br>Лимит: <b>1800 токенов (Safe)</b></div>", unsafe_allow_html=True)
 
 # ОСНОВНОЙ ЭКРАН
 if active_section == "Счета и выписки":
@@ -810,14 +817,25 @@ else:
         if ask_clicked or selected_preset:
             txt = selected_preset if selected_preset else u_query
             if txt:
-                with st.spinner("AI-агент формирует аналитический расчет..."):
+                # АВТОМАТИЧЕСКИЙ COOLDOWN (3 СЕКУНДЫ ДЛЯ ЗАЩИТЫ ОТ 429 RATE LIMIT)
+                now_ts = time.time()
+                elapsed = now_ts - st.session_state.last_api_call
+                if elapsed < 3.0:
+                    time.sleep(3.0 - elapsed)
+                st.session_state.last_api_call = time.time()
+
+                with st.spinner("AI-агент DeepSeek рассчитывает финансовые показатели..."):
                     ans = ask_ai_chat(current_company, selected_role_label, ins, txt)
                     st.session_state.chat_history[ins['id']] = {"q": txt, "a": ans}
 
         if ins['id'] in st.session_state.chat_history:
             h = st.session_state.chat_history[ins['id']]
             st.markdown(f'<div class="chat-bubble-user"><b>Вы:</b> {h["q"]}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="chat-bubble-ai">{h["a"]}</div>', unsafe_allow_html=True)
+            
+            # РЕНДЕРИМ ОТВЕТ С ЧИСТЫМ ФОРМАТИРОВАНИЕМ (БЕЗ СЫРЫХ ЗВЕЗДОЧЕК)
+            st.markdown('<div class="chat-bubble-ai-wrap">', unsafe_allow_html=True)
+            st.markdown(h["a"])
+            st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown('</div>', unsafe_allow_html=True)
 
