@@ -1383,7 +1383,6 @@ else:
                 st.download_button("Скачать краткую справку (TXT)", data=brief_as_text(current_company, selected_role_label, ins),
                                    file_name=f"alfa_insight_{ins['id']}.txt", mime="text/plain",
                                    key=f"txt_{ins['id']}")
-                st.caption("Для PDF: pip install reportlab и шрифт DejaVuSans в папке fonts/")
 
         st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
 
